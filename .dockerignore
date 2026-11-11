@@ -1,0 +1,17 @@
+node_modules
+dist
+.data
+.env
+.env.*
+!.env.example
+.git
+.railway
+out
+cache
+broadcast
+test
+tests
+docs
+deployments
+*.tsbuildinfo
+.DS_Store

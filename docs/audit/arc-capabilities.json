@@ -1,0 +1,76 @@
+{
+  "checkedAt": "2026-10-03T14:22:21.417Z",
+  "transactionsSubmitted": 0,
+  "network": {
+    "reachable": true,
+    "chainId": 5042002,
+    "blockNumber": "65298894",
+    "blockTimestamp": 1791037341000,
+    "observedBlockSeconds": 0.4,
+    "gasPriceNative": "25000000000",
+    "simpleTransferGasUsdc": "0.000525",
+    "explorer": "https://explorer.testnet.arc.io",
+    "usdcAddress": "0x3600000000000000000000000000000000000000",
+    "nativeDecimals": 18,
+    "tokenDecimals": 6,
+    "contracts": [
+      {
+        "key": "usdc",
+        "name": "Native USDC",
+        "address": "0x3600000000000000000000000000000000000000",
+        "deployed": true
+      },
+      {
+        "key": "identity",
+        "name": "ERC-8004 Identity",
+        "address": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+        "deployed": true
+      },
+      {
+        "key": "reputation",
+        "name": "ERC-8004 Reputation",
+        "address": "0x8004B663056A597Dffe9eCcC1965A193B7388713",
+        "deployed": true
+      },
+      {
+        "key": "batch",
+        "name": "Multicall3From",
+        "address": "0x522fAf9A91c41c443c66765030741e4AaCe147D0",
+        "deployed": true
+      }
+    ],
+    "contractConfigured": false,
+    "factoryAddress": null,
+    "settlementEnabled": false,
+    "reason": "No ArenaFactory deployment configured.",
+    "checkedAt": "2026-10-03T14:22:22.884Z"
+  },
+  "senderPreservingBatch": {
+    "simulationOnly": true,
+    "allCallsSucceeded": true,
+    "allowanceVisibleWithinBatch": "1234567",
+    "passed": true
+  },
+  "identityRegistration": {
+    "simulationOnly": true,
+    "passed": true,
+    "predictedTokenId": "896991"
+  },
+  "explorer": [
+    {
+      "url": "https://explorer.testnet.arc.io/address/0x3600000000000000000000000000000000000000",
+      "status": 200,
+      "finalUrl": "https://explorer.testnet.arc.io/address/0x3600000000000000000000000000000000000000"
+    },
+    {
+      "url": "https://explorer.testnet.arc.io/address/0x522fAf9A91c41c443c66765030741e4AaCe147D0",
+      "status": 200,
+      "finalUrl": "https://explorer.testnet.arc.io/address/0x522fAf9A91c41c443c66765030741e4AaCe147D0"
+    },
+    {
+      "url": "https://explorer.testnet.arc.io/address/0x8004A818BFB912233c491871b3d84c89A494BD9e",
+      "status": 200,
+      "finalUrl": "https://explorer.testnet.arc.io/address/0x8004A818BFB912233c491871b3d84c89A494BD9e"
+    }
+  ]
+}

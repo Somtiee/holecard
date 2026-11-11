@@ -1,0 +1,48 @@
+{
+  "checkedAt": "2026-10-03T07:14:05.114Z",
+  "rpcOrigin": "https://rpc.testnet.arc.network",
+  "expectedChainId": 5042002,
+  "usdcAddress": "0x3600000000000000000000000000000000000000",
+  "transactionsSubmitted": 0,
+  "chainId": 5042002,
+  "blockNumber": "65248397",
+  "usdc": {
+    "decimals": 6,
+    "symbol": "USDC",
+    "codeBytes": 1798,
+    "valid": true
+  },
+  "factory": {
+    "configured": false
+  },
+  "rpcChecksPassed": true,
+  "configuration": {
+    "circleConfigured": false,
+    "operatorWalletConfigured": false,
+    "postgresConfigured": false,
+    "modelConfigured": false,
+    "creatorAuthImplemented": true,
+    "operationJournalImplemented": true
+  },
+  "settlementReady": false,
+  "remaining": [
+    "Deploy and independently review ArenaFactoryV2",
+    "Configure Circle Developer-Controlled Wallets",
+    "Configure and fund the Circle Arc operator wallet",
+    "Configure Postgres",
+    "Configure an approved model provider",
+    "Run a live entry, finalization, prize claim, refund and explorer-link test on Arc Testnet"
+  ],
+  "explorerHttp": [
+    {
+      "base": "https://testnet.arcscan.app",
+      "status": 200,
+      "finalUrl": "https://explorer.testnet.arc.io/address/0x3600000000000000000000000000000000000000"
+    },
+    {
+      "base": "https://explorer.testnet.arc.io",
+      "status": 200,
+      "finalUrl": "https://explorer.testnet.arc.io/address/0x3600000000000000000000000000000000000000"
+    }
+  ]
+}

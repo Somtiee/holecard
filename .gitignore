@@ -1,0 +1,11 @@
+node_modules
+.data/
+dist
+.env
+.env.*.local
+*.tsbuildinfo
+.DS_Store
+cache
+out
+broadcast
+.railway/config.json
