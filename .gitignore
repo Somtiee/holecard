@@ -9,3 +9,5 @@ cache
 out
 broadcast
 .railway/config.json
+contracts/near/target
+.claude/

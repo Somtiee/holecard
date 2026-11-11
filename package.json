@@ -16,12 +16,13 @@
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
-    "@circle-fin/adapter-viem-v2": "^1.19.0",
-    "@circle-fin/app-kit": "^1.16.0",
-    "@circle-fin/developer-controlled-wallets": "^10.8.1",
+    "@hot-labs/near-connect": "0.11.4",
+    "@noble/curves": "2.0.1",
+    "@noble/hashes": "2.0.1",
     "@vitejs/plugin-react": "latest",
     "express": "^5.2.1",
     "lucide-react": "latest",
+    "near-api-js": "7.3.1",
     "pg": "^8.23.1",
     "react": "latest",
     "react-dom": "latest",

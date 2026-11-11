@@ -8,10 +8,10 @@ export default defineRailway(() => {
     healthcheck: "/api/ready",
     healthcheckTimeout: 120,
     volumeMounts: { "/app/.data": agentArenaVolume },
-    env: { DATABASE_URL: database.env.DATABASE_URL, ARC_CHAIN_ID: preserve(), ARC_RPC_URL: preserve(), ARC_USDC_ADDRESS: preserve(),
-      ARENA_FACTORY_ADDRESS: preserve(), ARENA_OPERATOR_ADDRESS: preserve(), ARENA_OPERATOR_WALLET_ID: preserve(),
-      CIRCLE_API_KEY: preserve(), CIRCLE_ENTITY_SECRET: preserve(), CIRCLE_WALLET_SET_ID: preserve(),
-      MODEL_API_KEY: preserve(), MODEL_BASE_URL: preserve(), MODEL_ALLOWED_MODELS: preserve(),
+    env: { DATABASE_URL: database.env.DATABASE_URL, NEAR_NETWORK: preserve(), NEAR_RPC_URL: preserve(),
+      ARENA_CONTRACT_ID: preserve(), ARENA_OPERATOR_ID: preserve(), ARENA_OPERATOR_PRIVATE_KEY: preserve(), AGENT_KEY_SECRET: preserve(),
+      NEARAI_API_KEY: preserve(), NEARAI_BASE_URL: preserve(), NEARAI_MODELS: preserve(), AGENT_TIMEOUT_MS: preserve(), ARENA_DECISION_POLICY: preserve(),
+      INTENTS_QUOTE_RECIPIENT: preserve(), ONECLICK_JWT: preserve(), AGENT_MARKET_TOKEN: preserve(), AGENT_MARKET_LISTING_URL: preserve(),
       PUBLIC_ORIGIN: "https://agent-arena-production-7923.up.railway.app", PUBLIC_HOSTNAME: "agent-arena-production-7923.up.railway.app", HOST: preserve() },
   });
 
