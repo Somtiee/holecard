@@ -6,13 +6,14 @@ import {resolve} from 'node:path';
 import {WebSocket,WebSocketServer} from 'ws';
 import {pool,migrate} from './db';
 import {clearSessionCookie,makeChallenge,requireOwner,revokeSession,sessionCookie,sessionOwner,signInRecipient,verifyChallenge} from './auth';
-import {agentAnalytics,agentWallet,createAgent,createTournament,decisionMode,getAgent,getTournament,launchTournament,leaderboard,listAgents,listTournaments,
+import {agentAnalytics,agentWallet,chainTournament,createAgent,createTournament,decisionMode,getAgent,getTournament,launchTournament,leaderboard,listAgents,listTournaments,
   operationHistory,provisionAgent,replayHand,reserveSeat,submitEntry,teeReceipts,tickArena,verifyMatch} from './arena';
 import {publicAgent} from './types';
-import {NEAR_EXPLORER,NEAR_NETWORK,NEAR_RPC_URL,contractId,nearConfigured,view} from '../near';
+import {NEAR_EXPLORER,NEAR_NETWORK,NEAR_RPC_URL,contractId,nearConfigured,operatorCall,txUrl,view} from '../near';
 import {allowedModels,attestModel,nearAiConfigured} from '../nearai';
 import {FUNDING_SOURCES,fundingQuote} from '../intents';
 import {agentMarketStatus,coachReport,pollAgentMarket} from '../agentMarket';
+import {FASTAUTH_CONTRACT,relayDelegate,relayFastAuthSign,sponsorAgent} from '../relayer';
 
 const app=express();app.disable('x-powered-by');app.use(express.json({limit:'32kb'}));
 const server=createServer(app),wss=new WebSocketServer({noServer:true});
@@ -22,7 +23,7 @@ const param=(value:string|string[])=>Array.isArray(value)?value[0]:value;
 function broadcast(event:string,data:unknown){const payload=JSON.stringify({event,data});for(const ws of wss.clients)if(ws.readyState===WebSocket.OPEN)ws.send(payload);}
 const secure=origin.startsWith('https://');
 const requestCounts=new Map<string,{count:number;until:number}>();
-const limited=new Set(['/api/auth/challenge','/api/intents/quote','/api/agent-market/preview']);
+const limited=new Set(['/api/auth/challenge','/api/intents/quote','/api/agent-market/preview','/api/relay/delegate','/api/relay/fastauth-sign']);
 app.use((req,res,next)=>{
   if(['POST','PUT','PATCH','DELETE'].includes(req.method)&&req.headers.origin!==origin){res.status(403).json({error:'Request origin does not match this arena.'});return;}
   if(limited.has(req.path)){
@@ -44,7 +45,7 @@ app.get('/api/health',handle(async(_req,res)=>{
 }));
 app.get('/api/config',(_req,res)=>res.json({network:NEAR_NETWORK,rpcUrl:NEAR_RPC_URL,explorer:NEAR_EXPLORER,contractId:safeContract(),signInRecipient:signInRecipient(),
   models:decisionMode()==='fixture'?['fixture-policy']:allowedModels(),decisionPolicy:decisionMode(),nearAiReady:nearAiConfigured(),nearReady:nearConfigured(),
-  fundingSources:FUNDING_SOURCES.map(({id,label})=>({id,label})),intentsReady:Boolean(process.env.INTENTS_QUOTE_RECIPIENT),agentMarket:agentMarketStatus()}));
+  fundingSources:FUNDING_SOURCES.map(({id,label})=>({id,label})),fastAuth:{contractId:FASTAUTH_CONTRACT,mpcContractId:process.env.FASTAUTH_MPC_CONTRACT_ID||'v1.signer-prod.testnet',clientId:process.env.FASTAUTH_CLIENT_ID||null},sponsorNear:NEAR_NETWORK==='testnet'?Number(process.env.SPONSOR_NEAR||0):0,intentsReady:Boolean(process.env.INTENTS_QUOTE_RECIPIENT),agentMarket:agentMarketStatus()}));
 
 app.post('/api/auth/challenge',handle(async(_req,res)=>{res.json(await makeChallenge());}));
 app.post('/api/auth/verify',handle(async(req,res)=>{const session=await verifyChallenge(req.body||{});res.setHeader('Set-Cookie',sessionCookie(session.token,secure));res.json({accountId:session.accountId});}));
@@ -58,6 +59,10 @@ app.get('/api/agents/:id/wallet',handle(async(req,res)=>{const data=await agentW
 app.post('/api/agents',requireOwner,handle(async(req,res)=>{const agent=await createAgent(res.locals.owner,res.locals.ownerPublicKey,req.body||{});broadcast('agent.created',agent);res.status(201).json(agent);}));
 app.post('/api/agents/:id/provision',requireOwner,handle(async(req,res)=>{res.json(await provisionAgent(param(req.params.id),res.locals.owner,res.locals.ownerPublicKey));}));
 
+app.post('/api/relay/delegate',requireOwner,handle(async(req,res)=>{const r=await relayDelegate(String(req.body?.signedDelegate||''),res.locals.owner);res.json({...r,explorer:txUrl(r.txHash)});}));
+app.post('/api/relay/fastauth-sign',handle(async(req,res)=>{res.json(await relayFastAuthSign(req.body||{}));}));
+app.post('/api/agents/:id/sponsor',requireOwner,handle(async(req,res)=>{const a=await getAgent(param(req.params.id));if(!a||a.owner!==res.locals.owner||a.state!=='active')throw new Error('Agent not found for this owner');
+  const r=await sponsorAgent(res.locals.owner,a.near_account,(agent,yocto)=>operatorCall('deposit',{agent},yocto));res.json({...r,explorer:txUrl(r.txHash)});}));
 app.post('/api/intents/quote',handle(async(req,res)=>{res.json(await fundingQuote({source:req.body?.source,amountYocto:String(req.body?.amountYocto||'')}));}));
 app.get('/api/nearai/attestation',handle(async(req,res)=>{res.json(await attestModel(String(req.query.model||allowedModels()[0]||'')));}));
 app.get('/api/agent-market',(_req,res)=>res.json(agentMarketStatus()));
@@ -66,6 +71,7 @@ app.post('/api/agent-market/preview',requireOwner,handle(async(req,res)=>{const 
 app.get('/api/tournaments',handle(async(_req,res)=>{res.json(await listTournaments());}));
 app.get('/api/tournaments/:id',handle(async(req,res)=>{const data=await getTournament(param(req.params.id));if(!data){res.status(404).json({error:'Tournament not found'});return;}res.json(data.public);}));
 app.get('/api/tournaments/:id/operations',handle(async(req,res)=>{res.json(await operationHistory(param(req.params.id)));}));
+app.get('/api/tournaments/:id/onchain',handle(async(req,res)=>{res.json(await chainTournament(param(req.params.id)));}));
 app.get('/api/tournaments/:id/tee-receipts',handle(async(req,res)=>{res.json(await teeReceipts(param(req.params.id)));}));
 app.get('/api/tournaments/:id/verification',handle(async(req,res)=>{const report=await verifyMatch(param(req.params.id));if(!report){res.status(404).json({error:'Tournament not found'});return;}res.json(report);}));
 app.get('/api/tournaments/:id/replay/:hand',handle(async(req,res)=>{const hand=await replayHand(param(req.params.id),Number(param(req.params.hand)));if(!hand){res.status(404).json({error:'Hand not found'});return;}res.json(hand);}));

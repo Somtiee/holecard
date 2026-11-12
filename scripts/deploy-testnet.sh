@@ -16,5 +16,13 @@ near contract deploy "$CONTRACT" use-file target/near/agent_arena.wasm \
   prepaid-gas '100.0 Tgas' attached-deposit '0 NEAR' \
   network-config testnet sign-with-legacy-keychain send
 near contract call-function as-read-only "$CONTRACT" get_config json-args '{}' network-config testnet now
+# Optional: verifiable deck randomness from OutLayer VRF. Deploy github.com/out-layer/vrf-example as an
+# OutLayer project first (https://app.outlayer.ai, testnet), then: OUTLAYER_PROJECT_ID=<you>.testnet/arena-vrf
+if [ -n "${OUTLAYER_PROJECT_ID:-}" ]; then
+  VRF_KEY=$(curl -s https://testnet-api.outlayer.ai/vrf/pubkey | python3 -c 'import sys,json;print(json.load(sys.stdin)["vrf_public_key_hex"])')
+  near contract call-function as-transaction "$CONTRACT" set_randomness_source \
+    json-args "{\"source\":{\"outlayer\":\"outlayer.testnet\",\"project_id\":\"$OUTLAYER_PROJECT_ID\",\"vrf_pubkey_hex\":\"$VRF_KEY\"}}" \
+    prepaid-gas '30.0 Tgas' attached-deposit '0 NEAR' sign-as "$CONTRACT" network-config testnet sign-with-legacy-keychain send
+fi
 echo "Set ARENA_CONTRACT_ID=$CONTRACT and ARENA_OPERATOR_ID=$OPERATOR in .env."
 echo "ARENA_OPERATOR_PRIVATE_KEY is the private_key in ~/.near-credentials/testnet/$OPERATOR.json"

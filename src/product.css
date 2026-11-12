@@ -34,3 +34,6 @@
 .content-panel label{display:grid;gap:6px;margin:10px 0;font-size:11px;letter-spacing:.08em}.content-panel textarea{width:100%;background:#10171a;color:#edf1eb;border:1px solid #46564b;padding:10px}
 .tx-row>small{font-size:10px;color:#9fb0a8;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (max-width:640px){.key-row{font-size:11px}.tx-row>small{display:none}}
+.signin-wrap{position:relative;display:inline-flex}.signin-menu{position:absolute;right:0;top:calc(100% + 8px);z-index:60;display:grid;min-width:250px;border:1px solid #384847;background:#151e21}
+.signin-menu button{display:grid;gap:3px;text-align:left;padding:14px;border:0;border-bottom:1px solid #2b3638;background:transparent;color:#edf1eb;font-size:12px;letter-spacing:.08em}.signin-menu button:hover{background:#1d282b}.signin-menu small{color:#9fb0a8;letter-spacing:.04em;font-size:11px}
+.quiet-link svg{vertical-align:-2px}

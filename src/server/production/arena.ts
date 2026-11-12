@@ -9,12 +9,26 @@ import {publicAgent,publicTournament,type AgentRow,type EntryRow,type Tournament
 
 type ChainAgent={owner:string;balance:string;created_at_ms:number;tournaments:number;wins:number;winnings:string};
 type ChainTournament={id:string;state:'Registration'|'Running'|'Finalized'|'Cancelled';entered:string[];roster_hash:string;seed_commitment:string;entry_fee:string;
-  registration_deadline_ms:number;duration_ms:number;grace_ms:number;started_at_ms:number;prize_pool:string;result_hash:string|null;replay_hash:string|null;revealed_seed:string|null;payouts:{agent:string;amount:string}[]};
+  registration_deadline_ms:number;duration_ms:number;grace_ms:number;started_at_ms:number;prize_pool:string;result_hash:string|null;replay_hash:string|null;revealed_seed:string|null;payouts:{agent:string;amount:string}[];
+  randomness:{status:string;output_hex:string|null;alpha:string|null;signature_hex:string|null}|null};
 const GRACE_MS=60*60_000,REGISTRATION_MS=15*60_000;
 /** Without a NEAR AI key the arena can still be run locally with the deterministic fixture policy (clearly labelled). */
 const fixtureMode=()=>process.env.ARENA_DECISION_POLICY==='fixture';
 export const decisionMode=()=>fixtureMode()?'fixture':'near-ai-cloud';
 
+type ChainConfig={randomness_source:{outlayer:string;project_id:string;vrf_pubkey_hex:string}|null};
+let configCache:{at:number;value:ChainConfig}|null=null;
+export async function chainConfig(){if(!configCache||Date.now()-configCache.at>60_000)configCache={at:Date.now(),value:await view<ChainConfig>('get_config')};return configCache.value;}
+const VRF_FEE=50_000_000_000_000_000_000_000n,VRF_GAS=300_000_000_000_000n;
+/** Returns the verified VRF output, null while it is pending, or undefined when no source is configured. */
+async function deckEntropy(t:TournamentRow,chain?:ChainTournament|null):Promise<string|null|undefined>{
+  if(!(await chainConfig()).randomness_source)return undefined;
+  const c=chain||await chainTournament(t.id);if(!c)return null;
+  if(c.randomness?.status==='verified')return c.randomness.output_hex;
+  if(!c.randomness)await chainOp(`vrf:${t.id}:${Math.floor(Date.now()/120_000)}`,{kind:'randomness',tournamentId:t.id,signer:'operator',method:'request_randomness'},
+    ()=>operatorCall('request_randomness',{tournament_id:t.id},VRF_FEE,VRF_GAS)).catch(error=>console.error('VRF request failed',(error as Error).message));
+  return null;
+}
 export const chainAgent=(account:string)=>view<ChainAgent|null>('get_agent',{agent:account});
 export const chainTournament=(id:string)=>view<ChainTournament|null>('get_tournament',{id});
 
@@ -80,11 +94,12 @@ export async function provisionAgent(id:string,owner:string,ownerPublicKey:strin
 
 export async function agentWallet(id:string){
   const agent=await getAgent(id);if(!agent)return null;
-  const [chain,balance,keys]=await Promise.all([chainAgent(agent.near_account).catch(()=>null),accountBalance(agent.near_account).catch(()=>null),accessKeys(agent.near_account).catch(()=>[])]);
+  const [chain,balance,keys,trophies]=await Promise.all([chainAgent(agent.near_account).catch(()=>null),accountBalance(agent.near_account).catch(()=>null),accessKeys(agent.near_account).catch(()=>[]),
+    view<[string,string][]>('mt_tokens_for_owner',{account_id:agent.near_account}).catch(()=>[])]);
   return{agentId:id,nearAccount:agent.near_account,explorer:accountUrl(agent.near_account),contractId:contractId(),
     arenaBalanceYocto:chain?.balance??'0',arenaBalanceNear:formatNear(chain?.balance??'0'),accountBalanceNear:balance?formatNear(balance):null,
     onchainRecord:chain,accessKeys:keys.map(k=>({...k,role:k.publicKey===agent.server_public_key?'arena server (restricted)':k.permission==='FullAccess'?'owner wallet (full access)':'other'})),
-    createTx:agent.create_tx?txUrl(agent.create_tx):null};
+    trophies:trophies.map(([tokenId,balance])=>({tokenId,balance})),createTx:agent.create_tx?txUrl(agent.create_tx):null};
 }
 
 // ---------- tournaments ----------
@@ -212,11 +227,13 @@ async function runHand(t:TournamentRow,onAction?:(action:HandDecision,tournament
       if(latest.state!=='running')return;
       const seats=(await client.query<EntryRow>(`SELECT e.*,a.name,a.strategy,a.model,a.description FROM entries e JOIN agents a ON a.id=e.agent_id WHERE e.tournament_id=$1 AND e.state='entered' ORDER BY e.agent_id`,[t.id])).rows
         .filter(e=>(latest.stacks[e.agent_id]||0)>0).map(e=>({id:e.agent_id,name:e.name,stack:latest.stacks[e.agent_id],strategy:e.strategy,model:e.model,description:e.description}));
+      const entropy=await deckEntropy(latest);
+      if(entropy===null)return; // wait for OutLayer to deliver verified randomness before dealing
       if(seats.length<2||Date.now()>=latest.started_at!.getTime()+latest.duration_seconds*1000){await finalize(latest);return;}
       const receipts:TeeReceipt[]=[];
       const provider=fixtureMode()?fixtureDecision:(ctx:DecisionContext)=>nearAiDecision(ctx,r=>receipts.push(r));
       const handNumber=latest.hand_number+1;
-      const hand=await playHand({seed:handSeed(latest.seed_secret,latest.id,handNumber),handNumber,seats,button:latest.button%seats.length,
+      const hand=await playHand({seed:handSeed(latest.seed_secret,latest.id,handNumber,entropy),handNumber,seats,button:latest.button%seats.length,
         smallBlind:Math.min(10000,10*latest.blind_level),bigBlind:Math.min(20000,20*latest.blind_level),timeoutMs:Math.min(30000,Math.max(1000,Number(process.env.AGENT_TIMEOUT_MS||8000)||8000)),
         provider,onTurn:turn=>onTurn?.(turn,latest.id),onDecision:d=>onAction?.(d,latest.id)});
       const stacks={...latest.stacks};for(const p of hand.players)stacks[p.id]=p.stack;
@@ -271,18 +288,20 @@ export async function replayHand(tournamentId:string,handNumber:number){const t=
 
 export async function verifyMatch(tournamentId:string){
   const data=await getTournament(tournamentId);const t=data?.row;if(!t)return null;
-  const handChecks=await Promise.all(t.history.map(async h=>({handNumber:h.handNumber,valid:await replayMatches(h,{smallBlind:Math.min(10000,10*(Math.floor((h.handNumber-1)/10)+1)),bigBlind:Math.min(20000,20*(Math.floor((h.handNumber-1)/10)+1))}),
-    seedMatches:handSeed(t.seed_secret,t.id,h.handNumber)===h.seed})));
   const chain=await chainTournament(t.id).catch(()=>null);
+  const vrf=chain?.randomness?.status==='verified'?chain.randomness.output_hex:undefined;
+  const handChecks=await Promise.all(t.history.map(async h=>({handNumber:h.handNumber,valid:await replayMatches(h,{smallBlind:Math.min(10000,10*(Math.floor((h.handNumber-1)/10)+1)),bigBlind:Math.min(20000,20*(Math.floor((h.handNumber-1)/10)+1))}),
+    seedMatches:handSeed(t.seed_secret,t.id,h.handNumber,vrf)===h.seed})));
   const settled=t.state==='settled';
   const receipts=(await pool.query<{total:string;verified:string}>(`SELECT count(*)::text AS total,count(*) FILTER (WHERE verified)::text AS verified FROM tee_receipts WHERE tournament_id=$1`,[t.id])).rows[0];
   const roster=data.entries.length?rosterHash(data.entries.map(e=>({agent:e.near_account,config_hash:e.config_hash}))):null;
   return{tournamentId:t.id,contractId:contractId(),handChecks,engineReplayVerified:handChecks.length>0&&handChecks.every(h=>h.valid&&h.seedMatches),
     seedCommitment:t.seed_commitment,seedReveal:settled?t.seed_secret:null,seedCommitmentMatches:seedMatches(t.seed_secret,t.seed_commitment),
     onchain:chain?{state:chain.state,rosterHashMatches:chain.roster_hash===roster,seedCommitmentMatches:chain.seed_commitment===t.seed_commitment,
+      randomness:chain.randomness,
       resultHashMatches:settled?chain.result_hash===t.result_hash:null,replayHashMatches:settled?chain.replay_hash===t.replay_hash:null,revealedSeedMatches:settled?chain.revealed_seed===t.seed_secret:null,payouts:chain.payouts}:null,
     resultHash:t.result_hash,replayHash:t.replay_hash,decisionPolicy:decisionMode(),teeReceipts:{total:Number(receipts.total),verified:Number(receipts.verified)},
-    trust:'The arena operator chose the seed (committed onchain before entry) and asserted the ranking. The NEAR contract enforces entrants, frozen shares, the seed reveal and exact payouts. Replay proves deterministic execution, not unbiased randomness.'};
+    trust:'Deck seeds mix the operator seed (committed onchain before entry) with the OutLayer VRF output when configured. The operator asserts the ranking. The NEAR contract enforces entrants, frozen shares, the seed reveal and exact payouts. Replay proves deterministic execution, not unbiased randomness.'};
 }
 
 export async function leaderboard(){

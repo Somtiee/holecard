@@ -16,13 +16,18 @@
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
+    "@fast-auth-near/browser-sdk": "1.4.2",
+    "@fast-auth-near/javascript-provider": "1.4.1",
     "@hot-labs/near-connect": "0.11.4",
     "@noble/curves": "2.0.1",
     "@noble/hashes": "2.0.1",
     "@vitejs/plugin-react": "latest",
+    "borsh": "2.0.0",
+    "buffer": "6.0.3",
     "express": "^5.2.1",
     "lucide-react": "latest",
     "near-api-js": "7.3.1",
+    "near-api-js-v5": "npm:near-api-js@5.1.1",
     "pg": "^8.23.1",
     "react": "latest",
     "react-dom": "latest",

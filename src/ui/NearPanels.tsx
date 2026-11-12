@@ -1,11 +1,11 @@
 import {useEffect,useState} from 'react';
-import {ArrowRight,Bot,Cpu,ExternalLink,KeyRound,Repeat,ShieldCheck,Wallet} from 'lucide-react';
+import {ArrowRight,Award,Bot,Cpu,Dices,ExternalLink,Gift,KeyRound,Repeat,ShieldCheck,Wallet} from 'lucide-react';
 import {depositToAgent,nearToYocto,withdrawFromAgent} from './near';
 
 export type NearConfig={network:'testnet'|'mainnet';rpcUrl:string;explorer:string;contractId:string|null;models:string[];decisionPolicy:string;nearAiReady:boolean;nearReady:boolean;
-  fundingSources:{id:string;label:string}[];intentsReady:boolean;agentMarket:{enabled:boolean;lastPollAt:string|null;lastError:string|null;delivered:number;listing:string|null}};
+  fundingSources:{id:string;label:string}[];intentsReady:boolean;fastAuth:{contractId:string;mpcContractId:string;clientId:string|null};sponsorNear:number;agentMarket:{enabled:boolean;lastPollAt:string|null;lastError:string|null;delivered:number;listing:string|null}};
 type AccessKey={publicKey:string;role:string;permission:'FullAccess'|{receiverId:string;methodNames:string[];allowance:string|null}};
-type AgentWallet={nearAccount:string;explorer:string;contractId:string;arenaBalanceNear:string;accountBalanceNear:string|null;accessKeys:AccessKey[];createTx:string|null;onchainRecord:{owner:string;tournaments:number;wins:number}|null};
+type AgentWallet={trophies:{tokenId:string;balance:string}[];nearAccount:string;explorer:string;contractId:string;arenaBalanceNear:string;accountBalanceNear:string|null;accessKeys:AccessKey[];createTx:string|null;onchainRecord:{owner:string;tournaments:number;wins:number}|null};
 type Quote={source:string;amountIn:string;amountInUsd:string;amountOut:string;timeEstimateSeconds:number;note:string};
 type Attestation={model:string;nonce:string;checkedAt:string;nonceEchoed:boolean;modelSigners:string[];gatewaySigners:string[];gpu:{overallResult:boolean;nonceMatch:boolean|null;gpus:{key:string;hwmodel:string|null}[]}|null;intelQuotePresent:boolean;verified:boolean;notes:string[]};
 type Receipt={hand_number:number;agent:string;model:string;chat_id:string;signature_kind:string|null;signer:string|null;verified:boolean;detail:string|null};
@@ -22,9 +22,10 @@ export function AgentNearPanel({agentId,owned,config,notify}:{agentId:string;own
   useEffect(()=>{load();const t=setInterval(load,8000);return()=>clearInterval(t);},[agentId]);
   const act=async(kind:'deposit'|'withdraw')=>{
     if(!config?.contractId||!wallet)return;setBusy(true);
-    try{await(kind==='deposit'?depositToAgent:withdrawFromAgent)(config.network,config.contractId,wallet.nearAccount,amount);notify(kind==='deposit'?'Deposit confirmed onchain.':'Withdrawal sent to your wallet.');load();}
+    try{const via=await(kind==='deposit'?depositToAgent:withdrawFromAgent)(config.network,config.contractId,wallet.nearAccount,amount);notify(`${kind==='deposit'?'Deposit confirmed onchain':'Withdrawal sent to your wallet'}${via==='relayed'?' · gas paid by the arena relayer':''}.`);load();}
     catch(e){notify((e as Error).message);}finally{setBusy(false);}
   };
+  const sponsor=async()=>{setBusy(true);try{await post(`/api/agents/${agentId}/sponsor`,{});notify(`Starter stake of ${config?.sponsorNear} testnet NEAR deposited by the arena.`);load();}catch(e){notify((e as Error).message);}finally{setBusy(false);}};
   const askQuote=async()=>{setBusy(true);try{setQuote(await post<Quote>('/api/intents/quote',{source,amountYocto:nearToYocto(amount)}));}catch(e){notify((e as Error).message);}finally{setBusy(false);}};
   if(!wallet)return <section className="content-panel"><div className="panel-heading"><span>NEAR AGENT ACCOUNT</span><Wallet size={18}/></div><p>Loading account…</p></section>;
   return <section className="content-panel near-panel"><div className="panel-heading"><span>NEAR AGENT ACCOUNT</span><Wallet size={18}/></div>
@@ -37,7 +38,9 @@ export function AgentNearPanel({agentId,owned,config,notify}:{agentId:string;own
       <span>{k.permission==='FullAccess'?'Full access':`Only ${k.permission.methodNames.join(', ')} on ${k.permission.receiverId}${k.permission.allowance?` · gas cap ${yoctoNear(k.permission.allowance)} NEAR`:''} · cannot attach deposits`}</span></div>)}</div>
     {owned&&<><div className="form-row"><input aria-label="Amount in NEAR" value={amount} onChange={e=>setAmount(e.target.value)} inputMode="decimal" placeholder="NEAR"/>
       <button disabled={busy} onClick={()=>void act('deposit')}>DEPOSIT <ArrowRight size={15}/></button><button disabled={busy} onClick={()=>void act('withdraw')}>WITHDRAW</button></div>
-      <p className="fund-hint">Deposit and withdraw are signed by your own wallet. Withdrawals always pay the owner account recorded in the contract.</p></>}
+      <p className="fund-hint">Deposit and withdraw are signed by your own wallet; when your wallet supports NEP-366 delegate actions the arena relayer pays the gas. Withdrawals always pay the owner account recorded in the contract.</p>
+      {Boolean(config?.sponsorNear)&&<button className="quiet-link" disabled={busy} onClick={()=>void sponsor()}><Gift size={14}/> CLAIM {config?.sponsorNear} NEAR TESTNET STARTER STAKE</button>}</>}
+    <div className="key-list"><small><Award size={13}/> TROPHIES · NEP-245 (SOULBOUND)</small>{wallet.trophies.length?wallet.trophies.map(t=><div className="key-row" key={t.tokenId}><b>{t.tokenId.startsWith('trophy:')?'CHAMPION TROPHY':t.tokenId.toUpperCase()}</b><span>{t.tokenId.startsWith('trophy:')?`Tournament ${t.tokenId.slice(7,15)}…`:`× ${t.balance}`}</span></div>):<span className="fund-hint">Trophies are minted by the arena contract when this agent finishes in the money.</span>}</div>
     <div className="intents-box"><small><Repeat size={13}/> FUND FROM ANY CHAIN · NEAR INTENTS</small><div className="form-row"><select value={source} onChange={e=>setSource(e.target.value)}>{config?.fundingSources.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}</select>
       <button disabled={busy||!config?.intentsReady} onClick={()=>void askQuote()}>QUOTE {amount} NEAR</button></div>
       {!config?.intentsReady&&<p className="fund-hint">Intents quotes need a mainnet recipient configured on the server.</p>}
@@ -55,6 +58,16 @@ export function TeeReceiptsPanel({tournamentId,policy}:{tournamentId:string;poli
     {rows.slice(0,12).map((r,i)=><div className="tx-row" key={`${r.chat_id}-${i}`}><span className="tx-icon"><Cpu size={15}/></span><div><b>HAND {r.hand_number} · {r.agent}</b><small>{r.model} · {short(r.chat_id,10)}</small></div>
       <span className={`tag ${r.verified?'mint':''}`}>{r.verified?'TEE VERIFIED':r.detail?'UNVERIFIED':'CHECKING'}</span><small title={r.detail||''}>{r.signer?`${r.signature_kind} ${short(r.signer,6)}`:r.detail||''}</small></div>)}
     {!rows.length&&<p>{policy==='fixture'?'This arena runs the deterministic fixture policy, so no model is called.':'Receipts appear as soon as agents make decisions.'}</p>}</section>;
+}
+
+/** Deck entropy: OutLayer VRF requested by the contract and verified with ed25519_verify onchain. */
+export function RandomnessPanel({tournamentId}:{tournamentId:string}){
+  const [r,setR]=useState<{status:string;output_hex:string|null;alpha:string|null}|null|undefined>(undefined);
+  useEffect(()=>{const load=()=>void get<{randomness:typeof r}|null>(`/api/tournaments/${tournamentId}/onchain`).then(t=>setR(t?.randomness??null)).catch(()=>{});load();const i=setInterval(load,6000);return()=>clearInterval(i);},[tournamentId]);
+  return <section className="content-panel"><div className="panel-heading"><span>VERIFIABLE SHUFFLE</span><Dices size={17}/></div>
+    {r?.status==='verified'?<><span className="tag mint">VRF VERIFIED ONCHAIN</span><p>OutLayer's TEE produced this value; the arena contract checked its Ed25519 proof before storing it. Every deck mixes it with the operator's pre-committed seed.</p><div className="address-line"><span>{short(r.output_hex,14)}</span></div><small>{r.alpha}</small></>
+     :r?.status==='requested'?<p>Waiting for OutLayer to return verifiable randomness. Dealing starts once the contract verifies it.</p>
+     :<p>Requested from OutLayer when the match starts. Deck entropy cannot be re-rolled once verified.</p>}</section>;
 }
 
 /** /near: what each NEAR integration does in this product, with live evidence. */
@@ -81,6 +94,12 @@ export function NearPage({config,signedIn,notify}:{config:NearConfig|null;signed
           <ul><li>{att.nonceEchoed?'✓':'✗'} report bound to our nonce {short(att.nonce,6)}</li><li>{att.gpu?.overallResult?'✓':'✗'} NVIDIA NRAS GPU attestation {att.gpu?.gpus.map(g=>g.hwmodel).filter(Boolean).join(', ')}</li>
             <li>{att.gpu?.nonceMatch?'✓':'✗'} GPU evidence nonce matches</li><li>{att.intelQuotePresent?'✓':'–'} Intel TDX quote present</li><li>{att.modelSigners.length} model TEE signing key(s): {att.modelSigners.map(s=>short(s,5)).join(', ')}</li></ul>
           {att.notes.map(n=><small key={n}>{n}</small>)}</div>}</section>
+      <section className="content-panel"><div className="panel-heading"><span>OUTLAYER VRF · YIELD/RESUME</span><Dices size={18}/></div>
+        <p>When a match starts, the arena contract calls OutLayer's <code>request_execution</code>. The transaction pauses (yield) while a TEE worker produces a VRF value, then resumes into <code>on_randomness</code>, which runs <code>env::ed25519_verify</code> against OutLayer's VRF key. Decks mix that value with the operator's seed, committed before anyone entered.</p></section>
+      <section className="content-panel"><div className="panel-heading"><span>NEP-245 TROPHIES</span><Award size={18}/></div>
+        <p>The arena contract is also a multi-token contract. Finalizing a tournament mints a unique <code>trophy:&lt;id&gt;</code> to the winner and fungible <code>champion</code>/<code>podium</code> badges. They are soulbound (<code>mt_transfer</code> rejects), so reputation can be read by any app but not bought.</p></section>
+      <section className="content-panel"><div className="panel-heading"><span>NEAR AUTH + META-TRANSACTIONS</span><KeyRound size={18}/></div>
+        <p>Players can sign in with Google, email or a passkey through NEAR Auth (MPC-derived keys, no seed phrase). The arena relayer submits the MPC signing call and NEP-366 delegate actions, so players never pay gas; on testnet a one-time starter stake means they never need to buy NEAR to play.</p></section>
       <section className="content-panel"><div className="panel-heading"><span>NEAR INTENTS · 1CLICK</span><Repeat size={18}/></div>
         <p>On each agent page, an owner can price funding that agent's entry from USDC on Base, Arbitrum, Ethereum or Solana, or from ETH, SOL or BTC. Intents run on mainnet only, so this testnet arena asks for <code>dry: true</code> quotes and executes nothing.</p>
         <p>{config?.intentsReady?'Quotes enabled.':'Quotes disabled: no mainnet recipient configured.'}</p></section>

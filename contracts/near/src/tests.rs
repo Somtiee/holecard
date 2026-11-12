@@ -270,3 +270,135 @@ fn seed_reveal_uses_sha256_of_raw_bytes() {
     let seed = [0xabu8; 32];
     assert_eq!(sha256_hex(&from_hex(&to_hex(&seed)).unwrap()), sha256_hex(&seed));
 }
+
+// ---------- OutLayer VRF ----------
+
+use ed25519_dalek::{Signer, SigningKey};
+
+fn vrf_key() -> SigningKey {
+    SigningKey::from_bytes(&[9u8; 32])
+}
+
+fn with_vrf(arena: &mut Arena) {
+    ctx("arena.testnet", 0, 1_000);
+    arena.set_randomness_source(Some(RandomnessSource {
+        outlayer: acc("outlayer.testnet"),
+        project_id: "arena.testnet/vrf".into(),
+        vrf_pubkey_hex: to_hex(vrf_key().verifying_key().as_bytes()),
+    }));
+}
+
+fn running(arena: &mut Arena) {
+    create(arena, &[A, B], vec![10000]);
+    for a in [A, B] {
+        ctx(a, 0, 2_000);
+        arena.enter("t1".into());
+    }
+}
+
+fn vrf_response(alpha: &str, key: &SigningKey) -> VrfResponse {
+    let sig = key.sign(alpha.as_bytes());
+    VrfResponse {
+        results: vec![VrfEntry { value: near_sdk::serde_json::json!(null), signature_hex: to_hex(&sig.to_bytes()), alpha: alpha.into() }],
+    }
+}
+
+#[test]
+fn verified_vrf_is_stored_and_unlocks_finalize() {
+    let mut arena = three();
+    with_vrf(&mut arena);
+    running(&mut arena);
+    ctx("operator.testnet", MIN_VRF_FEE, 3_000);
+    arena.request_randomness("t1".into());
+    ctx("arena.testnet", 0, 3_100);
+    let alpha = format!("vrf:42:arena.testnet:{}", vrf_seed("t1"));
+    assert!(arena.on_randomness("t1".into(), Ok(Some(vrf_response(&alpha, &vrf_key())))));
+    let r = arena.get_tournament("t1".into()).unwrap().randomness.unwrap();
+    assert_eq!(r.status, "verified");
+    let sig = vrf_key().sign(alpha.as_bytes()).to_bytes();
+    assert_eq!(r.output_hex.unwrap(), sha256_hex(&sig));
+    ctx("operator.testnet", 0, 5 * MIN);
+    arena.finalize("t1".into(), hash("r"), hash("p"), to_hex(&seed()), vec![acc(A)]);
+}
+
+#[test]
+fn forged_or_misbound_vrf_is_rejected_and_retry_allowed() {
+    let mut arena = three();
+    with_vrf(&mut arena);
+    running(&mut arena);
+    ctx("operator.testnet", MIN_VRF_FEE, 3_000);
+    arena.request_randomness("t1".into());
+    ctx("arena.testnet", 0, 3_100);
+    let forger = SigningKey::from_bytes(&[1u8; 32]);
+    let alpha = format!("vrf:42:arena.testnet:{}", vrf_seed("t1"));
+    assert!(!arena.on_randomness("t1".into(), Ok(Some(vrf_response(&alpha, &forger)))));
+    assert!(arena.get_tournament("t1".into()).unwrap().randomness.is_none());
+    // A genuine signature for another tournament's seed is rejected too.
+    ctx("operator.testnet", MIN_VRF_FEE, 3_200);
+    arena.request_randomness("t1".into());
+    ctx("arena.testnet", 0, 3_300);
+    let other = format!("vrf:43:arena.testnet:{}", vrf_seed("t2"));
+    assert!(!arena.on_randomness("t1".into(), Ok(Some(vrf_response(&other, &vrf_key())))));
+}
+
+#[test]
+#[should_panic(expected = "RANDOMNESS_ALREADY_REQUESTED")]
+fn randomness_cannot_be_rerolled() {
+    let mut arena = three();
+    with_vrf(&mut arena);
+    running(&mut arena);
+    ctx("operator.testnet", MIN_VRF_FEE, 3_000);
+    arena.request_randomness("t1".into());
+    ctx("arena.testnet", 0, 3_100);
+    let alpha = format!("vrf:42:arena.testnet:{}", vrf_seed("t1"));
+    arena.on_randomness("t1".into(), Ok(Some(vrf_response(&alpha, &vrf_key()))));
+    ctx("operator.testnet", MIN_VRF_FEE, 3_200);
+    arena.request_randomness("t1".into());
+}
+
+#[test]
+#[should_panic(expected = "RANDOMNESS_NOT_VERIFIED")]
+fn finalize_requires_randomness_when_source_is_set() {
+    let mut arena = three();
+    with_vrf(&mut arena);
+    running(&mut arena);
+    ctx("operator.testnet", 0, 5 * MIN);
+    arena.finalize("t1".into(), hash("r"), hash("p"), to_hex(&seed()), vec![acc(A)]);
+}
+
+#[test]
+#[should_panic(expected = "NOT_CONTRACT_OWNER")]
+fn operator_cannot_change_vrf_key() {
+    let mut arena = three();
+    ctx("operator.testnet", 0, 1_000);
+    arena.set_randomness_source(None);
+}
+
+// ---------- NEP-245 trophies ----------
+
+#[test]
+fn finalize_mints_soulbound_trophies() {
+    let mut arena = three();
+    create(&mut arena, &[A, B, C], vec![7000, 3000]);
+    for a in [A, B, C] {
+        ctx(a, 0, 2_000);
+        arena.enter("t1".into());
+    }
+    ctx("operator.testnet", 0, 5 * MIN);
+    arena.finalize("t1".into(), hash("r"), hash("p"), to_hex(&seed()), vec![acc(B), acc(A)]);
+    assert_eq!(arena.mt_balance_of(acc(B), "trophy:t1".into()).0, 1);
+    assert_eq!(arena.mt_balance_of(acc(B), "champion".into()).0, 1);
+    assert_eq!(arena.mt_balance_of(acc(A), "podium".into()).0, 1);
+    assert_eq!(arena.mt_balance_of(acc(C), "podium".into()).0, 0);
+    assert_eq!(arena.mt_supply("podium".into()).unwrap().0, 2);
+    assert_eq!(arena.mt_token(vec!["trophy:t1".into()])[0].as_ref().unwrap().owner_id, Some(acc(B)));
+    assert_eq!(arena.mt_tokens_for_owner(acc(B)).len(), 3);
+}
+
+#[test]
+#[should_panic(expected = "SOULBOUND")]
+fn trophies_cannot_be_transferred() {
+    let mut arena = three();
+    ctx(B, 1, 1_000);
+    arena.mt_transfer(acc(A), "champion".into(), U128(1));
+}

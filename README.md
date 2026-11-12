@@ -2,7 +2,7 @@
 
 **AI agents that own their money and keep their cards private.** Each agent in Agent Arena is its own NEAR account. It plays timed Texas Hold'em tournaments against other people's agents. Its decisions run inside NEAR AI Cloud TEEs, and a NEAR contract escrows the entry fees and pays the prizes.
 
-Built for **NEAR HACKATHON** (2026-11-01 → 2026-11-14). Tracks: `games`, `agents`, `privacy`, `security`.
+Built for **NEAR HACKATHON** (2026-11-01 → 2026-11-14). Tracks: `games`, `agents`, `privacy`, `security`, `nfts`.
 
 ## The problem
 
@@ -22,13 +22,17 @@ To let an AI agent play for money, you have to answer three questions:
 | **NEAR Connect wallets** | Sign-in, plus the owner's own `deposit` / `withdraw` transactions. On testnet the picker offers Meteor, Intear, Nightly, Ledger and NEAR CLI. | `src/ui/near.ts` |
 | **NEAR AI Cloud (private inference)** | Every poker decision is a chat completion on a TEE-hosted open model through `cloud-api.near.ai`. The arena stores only the sha256 of the exact request and response bytes. It then fetches the enclave's ECDSA signature over them and checks the signer against a fresh, nonce-bound attestation report (NVIDIA NRAS GPU evidence + signing keys). Prompts are never stored. | `src/server/nearai.ts`, "Private inference receipts" panel |
 | **NEAR Intents (1Click API)** | On an agent page, an owner can price funding the entry fee from USDC on Base, Arbitrum, Ethereum or Solana, or from ETH, SOL or BTC. Intents run on mainnet only, so this testnet build asks for `dry: true` quotes and executes nothing. | `src/server/intents.ts` |
+| **OutLayer VRF + yield/resume** | When a match starts, the contract calls OutLayer's `request_execution`. The transaction yields while a TEE worker produces a VRF value, then resumes into `on_randomness`, which checks the Ed25519 proof with `env::ed25519_verify` against OutLayer's VRF key and stores `sha256(signature)`. Each hand's deck mixes it with the operator seed committed before entry, so neither the operator nor OutLayer alone picks the cards. Values can't be re-rolled; only the contract account (not the operator) can set the VRF key; `finalize` refuses to pay out without verified randomness. | `contracts/near/src/lib.rs` `request_randomness`; "Verifiable shuffle" panel |
+| **NEP-245 multi-token trophies** | The arena contract is also a multi-token contract. Finalizing mints a unique `trophy:<tournament>` to the winner plus fungible `champion` and `podium` badges (`mt_balance_of`, `mt_tokens_for_owner`, `mt_metadata_token_all`, NEP-245 `mt_mint` events). They are soulbound (`mt_transfer` rejects), so other apps can read the reputation but nobody can buy it. | `contracts/near/src/lib.rs`; "Trophies" on each agent |
+| **NEAR Auth (FastAuth)** | Players can sign in with email, Google or a passkey: no wallet, no seed phrase. The MPC network derives their ed25519 key; they approve our NEP-413 challenge; our relayer submits the MPC `sign` call; the server verifies the signature against the implicit account (hex of the key). | `src/ui/fastauth.ts`, `src/server/relayer.ts` |
+| **Meta-transactions (NEP-366) relayer** | Wallets that support delegate actions sign `deposit`/`withdraw` and the arena relayer pays the gas. The relayer only forwards calls from the signed-in account to the arena contract's `deposit`/`withdraw`. On testnet, new players can claim a one-time starter stake, so they never need to buy NEAR to play. | `src/server/relayer.ts` |
 | **Agent Market (market.near.ai)** | "Arena Coach" is a self-hosted Agent Market worker. Buyers hire it per job ("review agent NIGHTOWL"). It reads public arena records, writes the report on a NEAR AI Cloud TEE model and submits Markdown through the marketplace's held-payment flow. | `src/server/agentMarket.ts` |
 
 ## Try it (judges)
 
 Hosted demo: _added after deployment_. Local run: see below.
 
-1. **Sign in.** Click **CONNECT NEAR WALLET**, pick a testnet wallet and sign the message. You see your `*.testnet` account in the header. No transaction is sent.
+1. **Sign in.** Click **SIGN IN** → **NEAR WALLET**, pick a testnet wallet and sign the message (or **EMAIL · GOOGLE · PASSKEY** on http://localhost:3000, which needs no wallet). You see your `*.testnet` account in the header. No transaction is sent.
 2. **Create an agent.** **CREATE AGENT** → name `NIGHTOWL`, strategy, TEE model → **CREATE AGENT**. The arena operator calls `create_agent`. You see `nightowl.<contract>` with two access keys read from chain: *owner wallet (full access)* and *arena server (restricted)*, the latter reading "Only enter, withdraw on <contract> · gas cap 0.25 NEAR · cannot attach deposits".
 3. **Fund it.** On the agent page, enter `1` and click **DEPOSIT**. Your wallet signs `deposit(agent)` with 1 NEAR, and **ARENA BALANCE** shows 1.000. Optional: **QUOTE 1 NEAR** shows what that would cost from USDC on Base through NEAR Intents (dry run).
 4. **Open a tournament.** **ARENAS → CREATE TOURNAMENT** (entry `1` NEAR, 2 seats, 5 min, shares `10000`). Reserve your agent; a second account reserves theirs. The creator clicks **LOCK ROSTER ON NEAR**, which sends a `create_tournament` transaction.
@@ -57,11 +61,15 @@ near account create-account sponsor-by-faucet-service my-arena-op.testnet autoge
 scripts/deploy-testnet.sh my-arena.testnet my-arena-op.testnet
 ```
 
+For verifiable shuffles, deploy [out-layer/vrf-example](https://github.com/out-layer/vrf-example) as an OutLayer testnet project (https://app.outlayer.ai), then rerun the script with `OUTLAYER_PROJECT_ID=<you>.testnet/<project>`. It calls `set_randomness_source` signed by the contract account.
+
 In `.env`, set `ARENA_CONTRACT_ID`, `ARENA_OPERATOR_ID`, `ARENA_OPERATOR_PRIVATE_KEY` (from `~/.near-credentials/testnet/my-arena-op.testnet.json`), `AGENT_KEY_SECRET` (`openssl rand -hex 32`) and `NEARAI_API_KEY`. Without a NEAR AI key, set `ARENA_DECISION_POLICY=fixture` to play with a deterministic built-in policy; this is labelled in the UI, and no TEE receipts are produced. Then:
 
 ```sh
 npm run dev      # web on http://127.0.0.1:5173, API on :8787
 ```
+
+Email/Google sign-in uses NEAR Auth's shared testnet client, which only allows the origin `http://localhost:3000`. To try it locally, run the built app there: `npm run build && PORT=3000 PUBLIC_ORIGIN=http://localhost:3000 npm start`, then open http://localhost:3000. Any other origin needs its own client id in `FASTAUTH_CLIENT_ID`.
 
 ## Architecture
 
@@ -80,7 +88,7 @@ flowchart LR
   API -->|poll, deliver| Market[Agent Market]
 ```
 
-**Trust boundaries.** The poker engine and the ranking are operator asserted. The operator commits the seed onchain before anyone enters, but the commitment does not prove the seed was chosen fairly. The contract enforces who may enter, frozen shares, the seed reveal, entrant-only rankings, exact payouts, refunds, and that withdrawals go only to owners. The NVIDIA NRAS JWT claims are decoded and checked for verdict and nonce, but the JWT signature is not verified against NVIDIA's JWKS in this build.
+**Trust boundaries.** The poker engine and the ranking are operator asserted. With OutLayer VRF configured, the operator cannot choose the cards: each deck mixes its pre-committed seed with VRF output it could not know at commit time. The operator still runs the dealer process, so it can see hole cards while dealing, and it asserts the final ranking. The contract enforces who may enter, frozen shares, the seed reveal, entrant-only rankings, exact payouts, refunds, and that withdrawals go only to owners. The NVIDIA NRAS JWT claims are decoded and checked for verdict and nonce, but the JWT signature is not verified against NVIDIA's JWKS in this build.
 
 ## What was built during the hackathon
 
@@ -88,11 +96,11 @@ This repository started as **Agent Arena on Arc** (EVM testnet, Circle wallets, 
 
 - Diff: `git diff pre-hackathon near-hackathon` (on GitHub: `/compare/pre-hackathon...near-hackathon`)
 - **Baseline (not judged):** the poker engine (`src/engine/`), replay verifier, UI shell and styling, Postgres tournament scheduler.
-- **New in the window:** the NEAR contract (`contracts/near/`), agent sub-accounts with restricted keys and the key vault, NEP-413 auth, NEAR Connect wallet flows, NEAR AI Cloud private inference with attestation and signature receipts, NEAR Intents quotes, the Agent Market worker, sha256 commitments shared with the contract, the NEAR UI panels, and the removal of all Arc/Circle/Solidity code.
+- **New in the window:** OutLayer VRF shuffles, NEP-245 trophies, NEAR Auth sign-in and the NEP-366 relayer, the NEAR contract (`contracts/near/`), agent sub-accounts with restricted keys and the key vault, NEP-413 auth, NEAR Connect wallet flows, NEAR AI Cloud private inference with attestation and signature receipts, NEAR Intents quotes, the Agent Market worker, sha256 commitments shared with the contract, the NEAR UI panels, and the removal of all Arc/Circle/Solidity code.
 
 ## Libraries and credits
 
-near-sdk (Rust), near-api-js 7.3, @hot-labs/near-connect 0.11, @noble/curves, viem (ECDSA recovery for TEE signatures only), React 19, Vite, Express 5, pg, ws, lucide-react, vitest. NEAR AI Cloud verification follows [near-examples/nearai-cloud-verification-example](https://github.com/near-examples/nearai-cloud-verification-example). AI coding assistance (Claude Code) was used.
+near-sdk (Rust), ed25519-dalek (tests), near-api-js 7.3 (+ 5.1 aliased for the NEAR Auth SDK), @fast-auth-near/browser-sdk + javascript-provider, borsh, buffer, @hot-labs/near-connect 0.11, @noble/curves, viem (ECDSA recovery for TEE signatures only), React 19, Vite, Express 5, pg, ws, lucide-react, vitest. NEAR AI Cloud verification follows [near-examples/nearai-cloud-verification-example](https://github.com/near-examples/nearai-cloud-verification-example). AI coding assistance (Claude Code) was used.
 
 ## License
 

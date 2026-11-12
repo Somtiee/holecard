@@ -29,9 +29,20 @@ export async function signInWithNear(network:'testnet'|'mainnet'){
 export async function signOutNear(network:'testnet'|'mainnet'){try{await nearConnector(network).disconnect();}catch{/* no wallet connected */}}
 
 const yocto=(near:string)=>{if(!/^\d+(\.\d{1,6})?$/.test(near))throw new Error('Enter a NEAR amount with at most six decimals');const [w,f='']=near.split('.');return(BigInt(w)*10n**24n+BigInt(f.padEnd(24,'0'))).toString();};
-async function callArena(network:'testnet'|'mainnet',contractId:string,methodName:string,args:object,deposit='0'){
+/** Gasless when the wallet supports NEP-366 delegate actions: the player signs, the arena relayer pays gas.
+ * Otherwise a normal transaction from the player's wallet. Returns how it was sent. */
+async function callArena(network:'testnet'|'mainnet',contractId:string,methodName:string,args:object,deposit='0'):Promise<'relayed'|'wallet'>{
   const wallet=await nearConnector(network).wallet();
-  return wallet.signAndSendTransaction({network,receiverId:contractId,actions:[{type:'FunctionCall',params:{methodName,args,gas:'50000000000000',deposit}}]});
+  const action={type:'FunctionCall' as const,params:{methodName,args,gas:'50000000000000',deposit}};
+  if((wallet as {manifest?:{features?:{signDelegateActions?:boolean}}}).manifest?.features?.signDelegateActions){
+    try{
+      const {signedDelegateActions}=await wallet.signDelegateActions({network,delegateActions:[{receiverId:contractId,actions:[action]}]});
+      await api('/api/relay/delegate',{signedDelegate:signedDelegateActions[0]});
+      return'relayed';
+    }catch(error){console.warn('Gasless relay unavailable, falling back to a wallet transaction',error);}
+  }
+  await wallet.signAndSendTransaction({network,receiverId:contractId,actions:[action]});
+  return'wallet';
 }
 /** Owner wallet → arena contract: credit `agent`'s arena balance. */
 export const depositToAgent=(network:'testnet'|'mainnet',contractId:string,agent:string,near:string)=>callArena(network,contractId,'deposit',{agent},yocto(near));

@@ -21,9 +21,9 @@ export async function view<T>(method:string,args:Record<string,unknown>={}):Prom
 }
 
 type TxResult={value:unknown;txHash:string};
-async function call(account:Account,method:string,args:Record<string,unknown>,deposit=0n):Promise<TxResult>{
+async function call(account:Account,method:string,args:Record<string,unknown>,deposit=0n,gas=GAS):Promise<TxResult>{
   const outcome=await account.signAndSendTransaction({receiverId:contractId(),waitUntil:'FINAL',
-    actions:[actions.functionCall(method,args,GAS,deposit)]});
+    actions:[actions.functionCall(method,args,gas,deposit)]});
   const status=outcome.status as {SuccessValue?:string;Failure?:unknown};
   if(status&&typeof status==='object'&&'Failure' in status&&status.Failure)throw new Error(`NEAR ${method} failed: ${JSON.stringify(status.Failure).slice(0,300)}`);
   // A receipt deeper in the tree can fail even when the top-level status succeeds.
@@ -35,8 +35,17 @@ async function call(account:Account,method:string,args:Record<string,unknown>,de
   return{value,txHash:outcome.transaction_outcome.id};
 }
 
-export function operatorCall(method:string,args:Record<string,unknown>,deposit=0n){
-  return call(new Account(operatorId(),provider,operatorKey()),method,args,deposit);
+/** Raw transaction from the relayer account (defaults to the operator). Returns the base64 SuccessValue. */
+const relayerId=()=>process.env.RELAYER_ID||operatorId();
+const relayerKey=()=>(process.env.RELAYER_PRIVATE_KEY||operatorKey()) as KeyPairString;
+export async function relayerSend(receiverId:string,txActions:Parameters<Account['signAndSendTransaction']>[0]['actions']){
+  const outcome=await new Account(relayerId(),provider,relayerKey()).signAndSendTransaction({receiverId,actions:txActions,waitUntil:'FINAL'});
+  const status=outcome.status as {SuccessValue?:string;Failure?:unknown};
+  if(status&&typeof status==='object'&&'Failure' in status&&status.Failure)throw new Error(`Relayed transaction failed: ${JSON.stringify(status.Failure).slice(0,300)}`);
+  return{txHash:outcome.transaction_outcome.id,successValue:status?.SuccessValue??null};
+}
+export function operatorCall(method:string,args:Record<string,unknown>,deposit=0n,gas=GAS){
+  return call(new Account(operatorId(),provider,operatorKey()),method,args,deposit,gas);
 }
 
 // ---------- agent function-call keys ----------
@@ -91,6 +100,10 @@ export function verifyNep413Signature(input:{publicKey:string;signature:string;m
   return ed25519.verify(sig,nep413Hash(input),pk);
 }
 /** The signing key must be a full-access key of the claimed account, or the signature proves nothing. */
+/** An implicit account id is the hex of its ed25519 key, so the key proves ownership without an RPC lookup. */
+export function isImplicitAccountOf(accountId:string,publicKey:string){
+  return publicKey.startsWith('ed25519:')&&/^[0-9a-f]{64}$/.test(accountId)&&Buffer.from(baseDecode(publicKey.slice(8))).toString('hex')===accountId;
+}
 export async function isFullAccessKey(accountId:string,publicKey:string){
   try{const key=await provider.viewAccessKey({accountId,publicKey,finalityQuery:{finality:'final'}});return key.permission==='FullAccess';}catch{return false;}
 }

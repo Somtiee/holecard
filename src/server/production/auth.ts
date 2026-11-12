@@ -1,6 +1,6 @@
 import {createHash,randomBytes} from 'node:crypto';
 import type {Request,RequestHandler} from 'express';
-import {isFullAccessKey,validAccountId,verifyNep413Signature} from '../near';
+import {isFullAccessKey,isImplicitAccountOf,validAccountId,verifyNep413Signature} from '../near';
 import {pool,withTx} from './db';
 
 const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
@@ -34,7 +34,9 @@ export async function verifyChallenge(body:{accountId?:unknown;publicKey?:unknow
     const found=await client.query<{message:string}>('DELETE FROM sign_in_challenges WHERE nonce=$1 AND expires_at>now() RETURNING message',[nonceBytes.toString('hex')]);
     const message=found.rows[0]?.message;if(!message)throw new Error('Sign-in challenge expired or already used');
     if(!verifyNep413Signature({publicKey,signature,message,nonce:nonceBytes,recipient:signInRecipient()}))throw new Error('Invalid NEAR wallet signature');
-    if(!await isFullAccessKey(accountId,publicKey))throw new Error('The signing key is not a full-access key of this NEAR account');
+    // Named accounts: the key must be a full-access key onchain. Implicit accounts (e.g. NEAR Auth email/Google
+    // sign-in) are self-certifying: the account id is the hex of the key, and they may not exist onchain yet.
+    if(!isImplicitAccountOf(accountId,publicKey)&&!await isFullAccessKey(accountId,publicKey))throw new Error('The signing key is not a full-access key of this NEAR account');
     const token=randomBytes(32).toString('hex');
     await client.query(`INSERT INTO sessions(token_hash,account_id,public_key,expires_at) VALUES($1,$2,$3,now()+interval '7 days')`,[digest(token),accountId,publicKey]);
     return{accountId,token};
