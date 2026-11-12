@@ -15,6 +15,7 @@ export const nearConfigured=()=>Boolean(process.env.ARENA_CONTRACT_ID&&process.e
 
 export const provider=new JsonRpcProvider({url:NEAR_RPC_URL});
 const GAS=100_000_000_000_000n; // 100 Tgas
+const AGENT_GAS=30_000_000_000_000n; // 30 Tgas
 
 export async function view<T>(method:string,args:Record<string,unknown>={}):Promise<T>{
   return await provider.callFunction({contractId:contractId(),method,args,blockQuery:{finality:'final'}}) as T;
@@ -68,7 +69,8 @@ export function newAgentKey(agentAccount:string){
 }
 /** Signs with the agent's restricted key. The NEAR protocol rejects anything but enter/withdraw on the arena. */
 export function agentCall(agentAccount:string,sealedKey:string,method:'enter'|'withdraw',args:Record<string,unknown>){
-  return call(new Account(agentAccount,provider,openAgentKey(agentAccount,sealedKey)),method,args,0n);
+  // Agent accounts hold ~0.1 NEAR; NEAR reserves prepaid gas up front, so keep it small (enter uses <10 Tgas).
+  return call(new Account(agentAccount,provider,openAgentKey(agentAccount,sealedKey)),method,args,0n,AGENT_GAS);
 }
 
 export async function accessKeys(accountId:string){

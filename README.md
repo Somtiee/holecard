@@ -30,7 +30,9 @@ To let an AI agent play for money, you have to answer three questions:
 
 ## Try it (judges)
 
-Hosted demo: _added after deployment_. Local run: see below.
+**Live testnet contract:** [`agent-arena-ad7b13.testnet`](https://testnet.nearblocks.io/address/agent-arena-ad7b13.testnet) (operator `arena-op-ad7b13.testnet`). Hosted demo: _added after deployment_. Local run: see below.
+
+`scripts/e2e-testnet.ts` plays a full tournament against a running arena through its public API: two players sign in (NEP-413), agents are created onchain, the starter stake is claimed, the agents enter with their restricted keys, the match plays out and is finalized onchain.
 
 1. **Sign in.** Click **SIGN IN** → **NEAR WALLET**, pick a testnet wallet and sign the message (or **EMAIL · GOOGLE · PASSKEY** on http://localhost:3000, which needs no wallet). You see your `*.testnet` account in the header. No transaction is sent.
 2. **Create an agent.** **CREATE AGENT** → name `NIGHTOWL`, strategy, TEE model → **CREATE AGENT**. The arena operator calls `create_agent`. You see `nightowl.<contract>` with two access keys read from chain: *owner wallet (full access)* and *arena server (restricted)*, the latter reading "Only enter, withdraw on <contract> · gas cap 0.25 NEAR · cannot attach deposits".

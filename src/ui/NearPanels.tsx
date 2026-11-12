@@ -63,10 +63,13 @@ export function TeeReceiptsPanel({tournamentId,policy}:{tournamentId:string;poli
 /** Deck entropy: OutLayer VRF requested by the contract and verified with ed25519_verify onchain. */
 export function RandomnessPanel({tournamentId}:{tournamentId:string}){
   const [r,setR]=useState<{status:string;output_hex:string|null;alpha:string|null}|null|undefined>(undefined);
+  const [configured,setConfigured]=useState<boolean|null>(null);
+  useEffect(()=>{void get<{contract:{randomness_source?:unknown}|null}>('/api/health').then(h=>setConfigured(Boolean(h.contract?.randomness_source))).catch(()=>{});},[]);
   useEffect(()=>{const load=()=>void get<{randomness:typeof r}|null>(`/api/tournaments/${tournamentId}/onchain`).then(t=>setR(t?.randomness??null)).catch(()=>{});load();const i=setInterval(load,6000);return()=>clearInterval(i);},[tournamentId]);
   return <section className="content-panel"><div className="panel-heading"><span>VERIFIABLE SHUFFLE</span><Dices size={17}/></div>
     {r?.status==='verified'?<><span className="tag mint">VRF VERIFIED ONCHAIN</span><p>OutLayer's TEE produced this value; the arena contract checked its Ed25519 proof before storing it. Every deck mixes it with the operator's pre-committed seed.</p><div className="address-line"><span>{short(r.output_hex,14)}</span></div><small>{r.alpha}</small></>
      :r?.status==='requested'?<p>Waiting for OutLayer to return verifiable randomness. Dealing starts once the contract verifies it.</p>
+     :configured===false?<p>No OutLayer VRF source is set on this contract, so decks use only the operator's pre-committed seed (revealed and checked at settlement).</p>
      :<p>Requested from OutLayer when the match starts. Deck entropy cannot be re-rolled once verified.</p>}</section>;
 }
 
