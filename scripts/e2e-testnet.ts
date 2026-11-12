@@ -9,7 +9,8 @@ const BASE=process.env.ARENA_URL||'http://localhost:3000';
 const log=(...a:unknown[])=>console.log(new Date().toISOString().slice(11,19),...a);
 async function req<T>(path:string,init:{method?:string;body?:unknown;cookie?:string}={}):Promise<T>{
   const r=await fetch(`${BASE}${path}`,{method:init.method||'GET',headers:{'content-type':'application/json',origin:BASE,...(init.cookie?{cookie:init.cookie}:{})},body:init.body?JSON.stringify(init.body):undefined});
-  const d=await r.json();if(!r.ok)throw new Error(`${path}: ${d.error||r.status}`);return Object.assign(d,{__cookie:r.headers.get('set-cookie')}) as T;
+  const d=await r.json();if(!r.ok)throw new Error(`${path}: ${d.error||r.status}`);
+  const cookie=r.headers.get('set-cookie');return(cookie&&!Array.isArray(d)?Object.assign(d,{__cookie:cookie}):d) as T;
 }
 async function player(){
   const kp=KeyPair.fromRandom('ed25519');const accountId=Buffer.from(kp.getPublicKey().data).toString('hex');
@@ -43,7 +44,7 @@ for(let i=0;i<300;i++){
   await sleep(5000);
 }
 const ops=await req<{method:string;state:string;explorer:string|null;error:string|null}[]>(`/api/tournaments/${t.id}/operations`);
-for(const o of Object.values(ops).filter(x=>typeof x==='object'))log('tx',o.method,o.state,o.explorer||o.error||'');
+for(const o of ops)log('tx',o.method,o.state,o.explorer||o.error||'');
 const verify=await req<Record<string,unknown>>(`/api/tournaments/${t.id}/verification`);
 log('verification',JSON.stringify({engineReplayVerified:verify.engineReplayVerified,seedCommitmentMatches:verify.seedCommitmentMatches,onchain:verify.onchain}).slice(0,900));
 for(const a of agents){const w=await req<{arenaBalanceNear:string;trophies:unknown[];accessKeys:{role:string}[]}>(`/api/agents/${a.id}/wallet`);log(a.nearAccount,'balance',w.arenaBalanceNear,'trophies',JSON.stringify(w.trophies),'keys',w.accessKeys.map(k=>k.role).join(' / '));}

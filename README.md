@@ -32,6 +32,8 @@ To let an AI agent play for money, you have to answer three questions:
 
 **Live testnet contract:** [`agent-arena-ad7b13.testnet`](https://testnet.nearblocks.io/address/agent-arena-ad7b13.testnet) (operator `arena-op-ad7b13.testnet`). Hosted demo: _added after deployment_. Local run: see below.
 
+**Verifiable shuffles are live on testnet:** the contract's randomness source is the OutLayer project `agent-arena-ad7b13.testnet/arena-vrf` (OutLayer's open-source [vrf-example](https://github.com/out-layer/vrf-example) at commit `41978988`, built to wasm sha256 `efd5bdfc…` and served from [FastFS](https://test.fastfs.io/arena-op-ad7b13.testnet/outlayer.testnet/efd5bdfc34f6e1e11dfeecb498b2e43041a2c49221f879eb6e44a15cde121f23.wasm)). In a testnet run, [request_randomness](https://testnet.nearblocks.io/txns/HpEmqaHFtN6dXyU9u1diJLoy5R1waBuNWGdXzaWtWbG2) went through OutLayer's TEE and the contract verified the Ed25519 proof onchain before any card was dealt; 51 hands were dealt from decks mixing that value with the operator's committed seed, and [finalize](https://testnet.nearblocks.io/txns/9kKQ6a5Fapup12fDZnMKwLdJmDpiTeWSnkjpPBhssY6S) paid out only after that. Anyone can re-check a proof: `ed25519_verify(signature, alpha, key from https://testnet-api.outlayer.ai/vrf/pubkey)` and `sha256(signature) == output`.
+
 `scripts/e2e-testnet.ts` plays a full tournament against a running arena through its public API: two players sign in (NEP-413), agents are created onchain, the starter stake is claimed, the agents enter with their restricted keys, the match plays out and is finalized onchain.
 
 1. **Sign in.** Click **SIGN IN** → **NEAR WALLET**, pick a testnet wallet and sign the message (or **EMAIL · GOOGLE · PASSKEY** on http://localhost:3000, which needs no wallet). You see your `*.testnet` account in the header. No transaction is sent.
@@ -63,7 +65,7 @@ near account create-account sponsor-by-faucet-service my-arena-op.testnet autoge
 scripts/deploy-testnet.sh my-arena.testnet my-arena-op.testnet
 ```
 
-For verifiable shuffles, deploy [out-layer/vrf-example](https://github.com/out-layer/vrf-example) as an OutLayer testnet project (https://app.outlayer.ai), then rerun the script with `OUTLAYER_PROJECT_ID=<you>.testnet/<project>`. It calls `set_randomness_source` signed by the contract account.
+For verifiable shuffles: OutLayer testnet currently does not build from GitHub, so build [out-layer/vrf-example](https://github.com/out-layer/vrf-example) with `cargo build --locked --target wasm32-wasip2 --release`, publish it with `node --import tsx scripts/fastfs-upload.ts <wasm>`, create an OutLayer project whose source is that `WasmUrl` (`create_project` on `outlayer.testnet`), then rerun the deploy script with `OUTLAYER_PROJECT_ID=<account>/<project>` to call `set_randomness_source` signed by the contract account.
 
 In `.env`, set `ARENA_CONTRACT_ID`, `ARENA_OPERATOR_ID`, `ARENA_OPERATOR_PRIVATE_KEY` (from `~/.near-credentials/testnet/my-arena-op.testnet.json`), `AGENT_KEY_SECRET` (`openssl rand -hex 32`) and `NEARAI_API_KEY`. Without a NEAR AI key, set `ARENA_DECISION_POLICY=fixture` to play with a deterministic built-in policy; this is labelled in the UI, and no TEE receipts are produced. Then:
 
