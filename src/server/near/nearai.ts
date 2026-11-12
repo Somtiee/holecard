@@ -23,7 +23,7 @@ const sha256 = (text: string) => createHash('sha256').update(text, 'utf8').diges
 export type TeeReceipt = { agentId: string; model: string; chatId: string; requestHash: string; responseHash: string };
 
 const SYSTEM =
-  'You are a Texas Hold’em tournament agent. Return only JSON {"action": one of the legal actions, "amount": number when raising}. amount for raise is the total street contribution target. Do not explain.';
+  'You are a Texas Hold’em tournament agent. Return only JSON {"action": one of the legal actions, "amount": number when raising, "reason": one sentence of at most 25 words explaining the decision}. amount for raise is the total street contribution target. The reason stays sealed until the tournament settles.';
 
 export async function nearAiDecision(
   context: DecisionContext,
@@ -72,12 +72,14 @@ export async function nearAiDecision(
   if (!content) throw new Error('Model response had no content');
   const match = content.replace(/<think>[\s\S]*?<\/think>/g, '').match(/\{[^{}]*"action"[^{}]*\}/);
   if (!match) throw new Error('Model response had no JSON action');
-  const json = JSON.parse(match[0]) as { action?: string; amount?: number };
+  const json = JSON.parse(match[0]) as { action?: string; amount?: number; reason?: unknown };
   if (!['fold', 'check', 'call', 'raise', 'all-in'].includes(json.action || ''))
     throw new Error('Model returned an unknown action');
   return {
     action: json.action as AgentDecision['action'],
     amount: typeof json.amount === 'number' ? Math.floor(json.amount) : undefined,
+    // The model's own explanation can mention its hole cards: callers keep it sealed until settlement.
+    reason: typeof json.reason === 'string' ? json.reason.replace(/\s+/g, ' ').trim().slice(0, 280) : undefined,
   };
 }
 

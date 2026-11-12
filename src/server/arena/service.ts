@@ -18,6 +18,7 @@ import {
 } from '../near/chain';
 import { allowedModels, nearAiConfigured, nearAiDecision, verifyReceipt, type TeeReceipt } from '../near/nearai';
 import { pool, withTx } from '../db';
+import { ensureHouseAgents } from './house';
 import { configHash, handSeed, newSeed, resultCommitment, rosterHash, rulesHash, seedMatches } from './commitments';
 import { publicAgent, publicTournament, type AgentRow, type EntryRow, type TournamentRow } from '../types';
 
@@ -182,6 +183,7 @@ export async function createAgent(owner: string, ownerPublicKey: string, input: 
   if (!fixtureMode() && !allowedModels().includes(model))
     throw new Error('Selected model is not on the NEAR AI Cloud allowlist');
   if (description.length > 500) throw new Error('Strategy description is too long');
+  if (/^HOUSE[ _-]/.test(name)) throw new Error('Names starting with HOUSE are reserved for house agents');
   if (!ownerPublicKey.startsWith('ed25519:'))
     throw new Error('Sign in with an ed25519 NEAR key to own an agent account');
   const owned = await pool.query<{ n: string }>('SELECT count(*)::text AS n FROM agents WHERE owner=$1', [owner]);
@@ -444,10 +446,10 @@ async function syncFunding(t: TournamentRow) {
   if (!chain) return;
   const entries = (
     await pool.query<EntryRow>(
-      `SELECT e.*,a.near_account FROM entries e JOIN agents a ON a.id=e.agent_id WHERE e.tournament_id=$1`,
+      `SELECT e.*,a.near_account,a.house FROM entries e JOIN agents a ON a.id=e.agent_id WHERE e.tournament_id=$1`,
       [t.id],
     )
-  ).rows;
+  ).rows as (EntryRow & { house: boolean })[];
   for (const e of entries) {
     if (chain.entered.includes(e.near_account) && e.state !== 'entered')
       await pool.query(`UPDATE entries SET state='entered' WHERE tournament_id=$1 AND agent_id=$2`, [t.id, e.agent_id]);
@@ -457,7 +459,17 @@ async function syncFunding(t: TournamentRow) {
       chain.state === 'Registration' &&
       Date.now() < chain.registration_deadline_ms
     ) {
-      const agent = await chainAgent(e.near_account).catch(() => null);
+      let agent = await chainAgent(e.near_account).catch(() => null);
+      // House agents: the operator tops up exactly the missing part of the entry fee.
+      if (agent && e.house && BigInt(agent.balance) < BigInt(t.entry_yocto)) {
+        const missing = BigInt(t.entry_yocto) - BigInt(agent.balance);
+        await chainOp(
+          `house-fund:${t.id}:${e.agent_id}`,
+          { kind: 'deposit', tournamentId: t.id, agentId: e.agent_id, signer: 'operator', method: 'deposit' },
+          () => operatorCall('deposit', { agent: e.near_account }, missing),
+        ).catch(error => console.error('House funding failed', e.near_account, (error as Error).message));
+        agent = await chainAgent(e.near_account).catch(() => null);
+      }
       if (agent && BigInt(agent.balance) >= BigInt(t.entry_yocto))
         await submitEntry(null, t.id, e.agent_id).catch(error =>
           console.error('Auto-entry failed', e.near_account, (error as Error).message),
@@ -582,9 +594,21 @@ async function runHand(
         return;
       }
       const receipts: TeeReceipt[] = [];
+      // Each model explains its move, but the note can mention hole cards, so it is stored apart from the public
+      // hand record and released only after settlement. The call counter ties a note to its own decision even if
+      // a timed-out call resolves late.
+      const notes: { seq: number; agentId: string; note: string }[] = [];
+      let calls = 0,
+        pending: { call: number; agentId: string; note?: string } | null = null;
       const provider = fixtureMode()
         ? fixtureDecision
-        : (ctx: DecisionContext) => nearAiDecision(ctx, r => receipts.push(r));
+        : async (ctx: DecisionContext) => {
+            const call = ++calls;
+            const decision = await nearAiDecision(ctx, r => receipts.push(r));
+            pending = { call, agentId: ctx.agentId, note: decision.reason };
+            return decision;
+          };
+      let seq = 0;
       const handNumber = latest.hand_number + 1;
       const hand = await playHand({
         seed: handSeed(latest.seed_secret, latest.id, handNumber, entropy),
@@ -596,7 +620,14 @@ async function runHand(
         timeoutMs: Math.min(30000, Math.max(1000, Number(process.env.AGENT_TIMEOUT_MS || 8000) || 8000)),
         provider,
         onTurn: turn => onTurn?.(turn, latest.id),
-        onDecision: d => onAction?.(d, latest.id),
+        onDecision: d => {
+          const p = pending as { call: number; agentId: string; note?: string } | null;
+          if (p && p.call === calls && p.agentId === d.agentId && p.note && !d.reason.startsWith('Fallback'))
+            notes.push({ seq, agentId: d.agentId, note: p.note });
+          pending = null;
+          seq++;
+          onAction?.(d, latest.id);
+        },
       });
       const stacks = { ...latest.stacks };
       for (const p of hand.players) stacks[p.id] = p.stack;
@@ -605,6 +636,11 @@ async function runHand(
         blind_level=CASE WHEN (hand_number+1)%10=0 THEN blind_level+1 ELSE blind_level END WHERE id=$1 AND hand_number=$4 AND state='running'`,
         [latest.id, JSON.stringify([hand]), JSON.stringify(stacks), latest.hand_number],
       );
+      for (const n of notes)
+        await client.query(
+          `INSERT INTO decision_notes(tournament_id,hand_number,seq,agent_id,note) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`,
+          [latest.id, handNumber, n.seq, n.agentId, n.note],
+        );
       for (const r of receipts)
         await client.query(
           `INSERT INTO tee_receipts(tournament_id,hand_number,agent_id,model,chat_id,request_hash,response_hash) VALUES($1,$2,$3,$4,$5,$6,$7)`,
@@ -650,6 +686,7 @@ export async function tickArena(
   onTurn?: (turn: PublicTurn, tournamentId: string) => void,
 ) {
   if (!nearConfigured()) return;
+  await ensureHouseAgents(provisionAgent).catch(error => console.error('House agents', (error as Error).message));
   const rows = (
     await pool.query<TournamentRow>(
       `SELECT * FROM tournaments WHERE state IN ('launching','funding','running','finalizing') ORDER BY created_at`,
@@ -719,6 +756,23 @@ export async function operationHistory(tournamentId: string) {
   );
   return r.rows.map(o => ({ ...o, explorer: o.tx_hash ? txUrl(o.tx_hash) : null }));
 }
+/** Each model's own explanation of its moves, released only once the tournament has settled onchain. */
+export async function decisionNotes(tournamentId: string) {
+  const t = (await pool.query<{ state: string }>('SELECT state FROM tournaments WHERE id=$1', [tournamentId])).rows[0];
+  if (!t) return null;
+  if (t.state !== 'settled') return { sealed: true as const, notes: [] };
+  const rows = (
+    await pool.query<{ hand_number: number; seq: number; agent_id: string; note: string }>(
+      'SELECT hand_number,seq,agent_id,note FROM decision_notes WHERE tournament_id=$1 ORDER BY hand_number,seq',
+      [tournamentId],
+    )
+  ).rows;
+  return {
+    sealed: false as const,
+    notes: rows.map(r => ({ hand: r.hand_number, seq: r.seq, agentId: r.agent_id, note: r.note })),
+  };
+}
+
 export async function teeReceipts(tournamentId: string) {
   const r = await pool.query(
     `SELECT r.hand_number,r.agent_id,a.name AS agent,r.model,r.chat_id,r.request_hash,r.response_hash,r.signature_kind,r.signer,r.verified,r.detail,r.created_at
@@ -812,6 +866,7 @@ type LeaderRow = {
   winRate: number;
   reputation: number;
   rating: number;
+  house: boolean;
   rank: number;
 };
 let leaderCache: { at: number; value: Promise<LeaderRow[]> } | null = null;
@@ -828,8 +883,8 @@ export function leaderboard(): Promise<LeaderRow[]> {
 }
 async function computeLeaderboard(): Promise<LeaderRow[]> {
   const [agents, played, handCounts, finishes] = await Promise.all([
-    pool.query<{ id: string; name: string; strategy: string; model: string; near_account: string }>(
-      `SELECT id,name,strategy,model,near_account FROM agents WHERE state='active'`,
+    pool.query<{ id: string; name: string; strategy: string; model: string; near_account: string; house: boolean }>(
+      `SELECT id,name,strategy,model,near_account,house FROM agents WHERE state='active'`,
     ),
     pool.query<{
       agent_id: string;
@@ -873,6 +928,7 @@ async function computeLeaderboard(): Promise<LeaderRow[]> {
       strategy: a.strategy,
       model: a.model,
       nearAccount: a.near_account,
+      house: a.house,
       tournaments: games.length,
       wins,
       hands: hands.get(a.id) || 0,

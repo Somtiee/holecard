@@ -51,7 +51,7 @@ export function LeaderboardPage({ arena }: { arena: ReturnType<typeof useArena> 
                 <i>{r.name[0]}</i>
                 <strong>
                   {r.name}
-                  <small>{r.strategy}</small>
+                  <small>{r.house ? `house · ${r.strategy}` : r.strategy}</small>
                 </strong>
               </span>
               <strong>{r.rating}</strong>

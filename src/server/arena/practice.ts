@@ -1,9 +1,11 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { fixtureDecision, playHand, type DecisionContext, type HandDecision, type HandSeat } from '../../engine/hand';
+import { playHand, type DecisionContext, type HandDecision, type HandSeat } from '../../engine/hand';
+import { STYLES, styledDecision } from '../../engine/policy';
 import { evaluateHand } from '../../engine/poker';
 
 /** Free practice sit-and-go: your strategy against three house bots. No sign-in, no NEAR, no model calls —
- * the built-in rules policy plays every seat, so it is instant and costs nothing. Nothing is stored. */
+ * every seat is played by the simulation-based rules player in src/engine/policy.ts, so a game takes ~30 ms and costs
+ * nothing. Nothing is stored. */
 export const PRACTICE_STRATEGIES = [
   'Aggressive',
   'Conservative',
@@ -31,16 +33,6 @@ const CATEGORY = [
   'four of a kind',
   'a straight flush',
 ];
-const RANK_NAME: Record<string, string> = { T: '10', J: 'jack', Q: 'queen', K: 'king', A: 'ace' };
-const POSITION_NAME: Record<string, string> = {
-  BTN: 'on the button',
-  SB: 'in the small blind',
-  BB: 'in the big blind',
-  UTG: 'under the gun',
-  MP: 'in middle position',
-  CO: 'in the cutoff',
-};
-
 export type PracticeSeat = { id: string; name: string; strategy: string; house: boolean };
 export type PracticeHand = {
   handNumber: number;
@@ -66,34 +58,6 @@ export type PracticeResult = {
   you: { place: number; net: number; handsWon: number; vpip: number };
 };
 
-const rankWord = (r: string) => RANK_NAME[r] || r;
-function holding(ctx: DecisionContext) {
-  const [a, b] = ctx.holeCards;
-  if (!ctx.communityCards.length) {
-    if (a[0] === b[0]) return `pocket ${rankWord(a[0])}s`;
-    return `${rankWord(a[0])}-${rankWord(b[0])}${a[1] === b[1] ? ' suited' : ''}`;
-  }
-  return CATEGORY[evaluateHand([...ctx.holeCards, ...ctx.communityCards])[0]] || 'a made hand';
-}
-/** Practice cards are not secret, so practice decisions get a plain-language explanation of the rule that fired. */
-function explain(ctx: DecisionContext, action: string, amount?: number) {
-  const where = POSITION_NAME[ctx.position] || 'at the table',
-    style = ctx.strategy.toLowerCase(),
-    hand = holding(ctx);
-  const call = ctx.legalActions.find(x => x.action === 'call')?.max || 0;
-  const odds = call
-    ? ` Calling ${call} into ${ctx.pot} needs ${Math.round((call / (ctx.pot + call)) * 100)}% equity.`
-    : '';
-  if (action === 'raise')
-    return `${hand[0].toUpperCase()}${hand.slice(1)} ${where}. The ${style} plan raises to ${amount} here.`;
-  if (action === 'call')
-    return `${hand[0].toUpperCase()}${hand.slice(1)} ${where} is worth a call on the ${style} plan.${odds}`;
-  if (action === 'check')
-    return `${hand[0].toUpperCase()}${hand.slice(1)} ${where}; nothing to call, so it takes a free card.`;
-  if (action === 'all-in') return `${hand[0].toUpperCase()}${hand.slice(1)} ${where}; commits the rest of the stack.`;
-  return `${hand[0].toUpperCase()}${hand.slice(1)} ${where} isn't strong enough for the ${style} plan to continue.${odds}`;
-}
-
 export function practiceInput(input: Record<string, unknown>) {
   const name = String(input.name || '')
     .trim()
@@ -115,6 +79,7 @@ export async function runPractice(input: Record<string, unknown>): Promise<Pract
   const seed = randomBytes(32).toString('hex');
   const stacks: Record<string, number> = Object.fromEntries(seats.map(s => [s.id, START_STACK]));
   const hands: PracticeHand[] = [];
+  const bust: Record<string, { hand: number; before: number }> = {};
   for (let n = 1; n <= MAX_HANDS; n++) {
     const alive = seats.filter(s => stacks[s.id] > 0);
     if (alive.length < 2) break;
@@ -125,8 +90,8 @@ export async function runPractice(input: Record<string, unknown>): Promise<Pract
       reasons: string[] = [];
     const provider = async (ctx: DecisionContext) => {
       hole[ctx.agentId] = ctx.holeCards;
-      const d = await fixtureDecision(ctx);
-      reasons.push(explain(ctx, d.action, d.amount));
+      const d = styledDecision(ctx, STYLES[ctx.strategy] || STYLES.Balanced, bigBlind);
+      reasons.push(d.reason || '');
       return d;
     };
     const handSeats: HandSeat[] = alive.map(s => ({
@@ -154,6 +119,7 @@ export async function runPractice(input: Record<string, unknown>): Promise<Pract
     for (const p of hand.players) {
       stacks[p.id] = p.stack;
       if (p.holeCards.length) hole[p.id] = p.holeCards;
+      if (p.stack === 0 && !bust[p.id]) bust[p.id] = { hand: n, before: startStacks[p.id] };
     }
     const shown = hand.players.filter(p => p.holeCards.length);
     const best =
@@ -185,7 +151,13 @@ export async function runPractice(input: Record<string, unknown>): Promise<Pract
   }
   const standings = seats
     .map(s => ({ id: s.id, name: s.name, stack: stacks[s.id] }))
-    .sort((a, b) => b.stack - a.stack || (a.id === 'you' ? -1 : b.id === 'you' ? 1 : 0))
+    // Busted players rank by how long they lasted, then by the stack they lost it all with.
+    .sort(
+      (a, b) =>
+        b.stack - a.stack ||
+        (bust[b.id]?.hand ?? 0) - (bust[a.id]?.hand ?? 0) ||
+        (bust[b.id]?.before ?? 0) - (bust[a.id]?.before ?? 0),
+    )
     .map((s, i) => ({ ...s, place: i + 1 }));
   const voluntary = hands.filter(h =>
     h.decisions.some(
@@ -195,7 +167,8 @@ export async function runPractice(input: Record<string, unknown>): Promise<Pract
   const dealt = hands.filter(h => 'you' in h.startStacks && h.startStacks.you > 0).length;
   return {
     seed,
-    policy: 'Built-in rules policy. No model calls and nothing onchain.',
+    policy:
+      'Every seat is a rules player that estimates its winning chances by simulating the rest of the hand, then applies its style. No model calls and nothing onchain.',
     seats,
     hands,
     standings,

@@ -14,6 +14,7 @@ export type AgentRow = {
   state: string;
   create_tx: string | null;
   created_at: Date;
+  house?: boolean;
 };
 export type TournamentRow = {
   id: string;
@@ -78,6 +79,7 @@ export function publicAgent(a: AgentRow, stats?: Record<string, unknown>) {
     serverPublicKey: a.server_public_key,
     state: a.state,
     createTx: a.create_tx,
+    house: Boolean(a.house),
     createdAt: a.created_at,
     ...stats,
   };

@@ -322,14 +322,11 @@ code {
   display: block;
   flex: none;
 }
-.brand .ring {
-  stroke: currentColor;
+.brand .card {
+  fill: currentColor;
 }
 .brand .core {
   fill: var(--green);
-}
-.brand .face {
-  fill: var(--brand-bg, var(--bg));
 }
 .brand .on {
   font: 500 12px var(--mono);
@@ -3368,4 +3365,49 @@ input[type='range'] {
   .leaderboard-row.rated > :nth-child(7) {
     display: none;
   }
+}
+.why-modal .model-note {
+  display: block;
+  margin: 16px 0 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--green);
+  border-radius: 10px;
+  background: #f7fdf8;
+}
+.why-modal .model-note small {
+  font: 500 10.5px var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--green-text);
+}
+.why-modal .model-note p {
+  margin: 6px 0 0;
+  font-size: 14.5px;
+  color: var(--ink);
+}
+.house-fill {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--rule);
+}
+.house-fill p,
+.house-note {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0 0 4px;
+}
+.tag.house {
+  color: var(--amber);
+  border-color: var(--amber);
+}
+.halo-mark {
+  width: 58%;
+  transform: rotate(-8deg);
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.18));
+}
+.halo-mark .card {
+  fill: #f4f3ef;
+}
+.halo-mark .core {
+  fill: var(--green);
 }

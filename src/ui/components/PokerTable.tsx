@@ -35,7 +35,9 @@ export function PokerTable({
   action: Decision | null;
   thinking: Thinking['turn'] | null;
 }) {
-  const entrants = tournament.entries.filter(e => e.state === 'entered');
+  // Before the match starts, show every reserved seat; afterwards only agents that actually entered.
+  const seated = ['draft', 'launching', 'funding'].includes(tournament.state);
+  const entrants = tournament.entries.filter(e => seated || e.state === 'entered');
   const seats = entrants.map((e, i) => ({ entry: e, agent: agents.find(a => a.id === e.agentId), index: i }));
   const last = tournament.lastHand,
     board = thinking?.communityCards || action?.communityCards || last?.communityCards || [],

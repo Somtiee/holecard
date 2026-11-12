@@ -1,10 +1,12 @@
-# Holecard
+<p align="center"><img src="public/logo.svg" alt="Holecard" width="260"></p>
 
-**AI agents play poker for NEAR. Nobody sees their cards, not even us.**
+<p align="center"><b>AI agents play poker for NEAR. Nobody sees their cards, not even us.</b></p>
+
+![Holecard: nobody sees their cards](docs/holecard-preview.png)
 
 Holecard is a poker arena for AI agents on NEAR. Every agent is its own NEAR account. It plays timed Texas Hold'em tournaments against other people's agents, decides each move privately inside a NEAR AI Cloud TEE (trusted execution environment), and is paid by a NEAR smart contract that escrows every entry fee. In Hold'em your *hole cards* are the two only you can see; Holecard is built so that this stays true for AI agents too.
 
-![NEAR testnet](https://img.shields.io/badge/NEAR-testnet-00C08B?style=flat-square) ![Rust contract](https://img.shields.io/badge/contract-Rust%20·%20near--sdk%205-000?style=flat-square) ![TypeScript](https://img.shields.io/badge/app-TypeScript%20·%20React%2019%20·%20Express%205-3178C6?style=flat-square) ![Tests](https://img.shields.io/badge/tests-29%20contract%20·%2048%20app-1cc744?style=flat-square) ![License MIT](https://img.shields.io/badge/license-MIT-555?style=flat-square)
+![NEAR testnet](https://img.shields.io/badge/NEAR-testnet-00C08B?style=flat-square) ![Rust contract](https://img.shields.io/badge/contract-Rust%20·%20near--sdk%205-000?style=flat-square) ![TypeScript](https://img.shields.io/badge/app-TypeScript%20·%20React%2019%20·%20Express%205-3178C6?style=flat-square) ![Tests](https://img.shields.io/badge/tests-29%20contract%20·%2053%20app-1cc744?style=flat-square) ![License MIT](https://img.shields.io/badge/license-MIT-555?style=flat-square)
 
 Built for **NEAR HACKATHON** (1–14 Nov 2026). Primary track: **Games With Real Economies**. Also relevant to Agent Economy, Privacy & Private AI, AI Security & Defense, and NFTs That Do Something.
 
@@ -14,6 +16,7 @@ Built for **NEAR HACKATHON** (1–14 Nov 2026). Primary track: **Games With Real
 | **Verifiable shuffle source** | OutLayer project `agent-arena-ad7b13.testnet/arena-vrf` |
 | **Hosted demo** | _added after deployment_ (run locally in two commands, see [Run it locally](#run-it-locally)) |
 | **Fastest way to try it** | `/#/practice`: free, no wallet, no sign-in |
+| **Set it up yourself** | [docs/SETUP.md](docs/SETUP.md): accounts, contract, NEAR AI, hosting, smoke test |
 
 > **About the name.** The project was called *Agent Arena* until 12 Nov 2026. The rename is cosmetic: on-chain account names (`agent-arena-ad7b13.testnet`), the Railway service names and the `ARENA_*` environment variables keep their original names so the live deployment keeps working.
 
@@ -50,14 +53,15 @@ Built for **NEAR HACKATHON** (1–14 Nov 2026). Primary track: **Games With Real
 
 1. Open the app and click **Play a free practice match** (or go straight to `/#/practice`). No wallet, no sign-in.
 2. Name an agent, pick a strategy (Aggressive, Conservative, Balanced, Bluff Heavy, Mathematical or Adaptive) and click **Deal me in**.
-3. Watch a 30-hand, four-seat sit-and-go against the house bots **GRANITE** (conservative), **VIPER** (aggressive) and **MIRAGE** (bluff heavy). Every action comes with a plain-language reason ("Ace-5 suited on the button. The aggressive plan raises to 60."). Hole cards are revealed at the end of each hand, including what the bots folded. Pause, step between hands, change speed (1×, 2×, 4×) or jump to **Results**.
+3. Watch a 30-hand, four-seat sit-and-go against the house bots **GRANITE** (conservative), **VIPER** (aggressive) and **MIRAGE** (bluff heavy). Every action comes with a plain-language reason based on a simulated win chance ("Ace-king suited on the button, about 48% to win against 2 opponents. Raises to 80 for value."). Hole cards are revealed at the end of each hand, including what the bots folded. Pause, step between hands, change speed (1×, 2×, 4×) or jump to **Results**.
 4. **Results** shows your finish, net chips, hands won and VPIP (how often you voluntarily put chips in). **Make it real on NEAR** opens agent creation with the same name and strategy filled in.
 
 Then look at:
 
 - **leaderboard**: switch between *NEAR profit* and *Skill rating* (Elo).
 - **on_near**: live contract stats, a **Verify TEE** button that runs a fresh, nonce-bound attestation of the NEAR AI Cloud model, and the Agent Market worker.
-- Any finished tournament: hand-by-hand replay, every NEAR transaction linked to NearBlocks, TEE receipts, the VRF proof and **Run verification**.
+- Any finished tournament: hand-by-hand replay, every NEAR transaction linked to NearBlocks, TEE receipts, the VRF proof, **Run verification**, and each model's own explanation of every move (**In its own words**, sealed until settlement).
+- Alone? Create a tournament, reserve your agent and click **Fill empty seats with house agents**: three labelled house agents join, the house pays their entry, and the table runs on-chain.
 
 ---
 
@@ -110,9 +114,9 @@ By hand, in the UI:
 1. **Sign in.** Click **sign_in → NEAR wallet**, pick a testnet wallet and sign the message (or **Email · Google · Passkey** on `http://localhost:3000`, which needs no wallet). Your `*.testnet` account appears in the header. No transaction is sent.
 2. **Create an agent.** **Create agent** → name `NIGHTOWL`, strategy, TEE model → **Create agent**. The operator calls `create_agent` and attaches the 0.1 NEAR account seed. The agent page shows `nightowl.<contract>` with two access keys read from the chain: *owner wallet (full access)* and *arena server (restricted)*, the latter reading "Only enter, withdraw on <contract> · gas cap 0.25 NEAR · cannot attach deposits".
 3. **Fund it.** On the agent page enter `1` and click **DEPOSIT**: your wallet signs `deposit(agent)` with 1 NEAR and **ARENA BALANCE** shows 1.000. Or claim the testnet starter stake. Optional: **QUOTE 1 NEAR** prices the same from USDC on Base through NEAR Intents (dry run).
-4. **Open a tournament.** **arenas → Create tournament** (entry `1` NEAR, 2 seats, 5 min, shares `10000`). Reserve your agent; a second account reserves theirs. The creator clicks **Lock roster on NEAR**, which sends `create_tournament`.
+4. **Open a tournament.** **arenas → Create tournament** (entry `1` NEAR, 2–9 seats, 5 min, shares `10000`). Reserve your agent; other players reserve theirs, or the creator clicks **Fill empty seats with house agents**. The creator then clicks **Lock roster on NEAR**, which sends `create_tournament`.
 5. **Watch it play.** Each agent enters by itself as soon as its arena balance covers the fee: the server's restricted key signs `enter`, and the owner sees no wallet popup. When the roster is full the contract starts the match and requests VRF randomness. The table plays live, and the **Private inference receipts** panel fills with `TEE VERIFIED` rows.
-6. **Settle.** When time runs out the operator calls `finalize`. The contract checks the seed reveal, credits the winners' arena balances and mints trophies. **NEAR transactions** links every transaction on NearBlocks. **Run verification** replays every hand and compares result, replay and roster hashes and the seed with contract state.
+6. **Settle.** When time runs out the operator calls `finalize`. The contract checks the seed reveal, credits the winners' arena balances and mints trophies. **NEAR transactions** links every transaction on NearBlocks. **Run verification** replays every hand and compares result, replay and roster hashes and the seed with contract state. Open any decision to read the model's own explanation, now unsealed.
 7. **Withdraw.** **WITHDRAW** on the agent page sends winnings to the owner's wallet. The agent's own key could call `withdraw` too, and the money would still go to the owner.
 
 ---
@@ -178,7 +182,8 @@ sequenceDiagram
 ├── src/
 │   ├── engine/                pure, deterministic Texas Hold'em (no I/O)
 │   │   ├── poker.ts           deck, legal actions, hand evaluation, side pots
-│   │   └── hand.ts            full-hand runner, decision timeouts, fixture policy
+│   │   ├── hand.ts            full-hand runner, decision timeouts, fixture policy
+│   │   └── policy.ts          simulation-based rules player (fast 7-card evaluator, Monte Carlo equity, styles)
 │   ├── server/                Express 5 + WebSocket API
 │   │   ├── index.ts           HTTP routes, rate limits, origin check, WebSocket feed, scheduler tick
 │   │   ├── env.ts             loads .env
@@ -188,6 +193,7 @@ sequenceDiagram
 │   │   ├── arena/             game logic
 │   │   │   ├── service.ts     agents, tournaments, hand loop, finalize, leaderboard, analytics
 │   │   │   ├── practice.ts    free practice sit-and-go against house bots
+│   │   │   ├── house.ts       house agents that fill empty seats in real tournaments
 │   │   │   ├── rating.ts      Elo skill rating
 │   │   │   ├── commitments.ts seed, roster, config and result commitments (mirrors the contract)
 │   │   │   └── verification.ts hand replay verifier
@@ -205,13 +211,14 @@ sequenceDiagram
 │   │   ├── pages/             home, practice, arenas, tournament, agents, agent, leaderboard, on NEAR
 │   │   └── wallet/            NEAR Connect and NEAR Auth clients
 │   └── main.tsx               React entry point
-├── tests/                     vitest suites (engine, NEAR crypto, relayer, practice, API integration)
+├── docs/SETUP.md              step-by-step deployment guide
+├── tests/                     vitest suites (engine, policy, NEAR crypto, relayer, practice, house, API)
 ├── scripts/
 │   ├── deploy-testnet.sh      build + deploy + init the contract, optional VRF source
 │   ├── upgrade-testnet.sh     code-only upgrade that keeps contract state
 │   ├── e2e-testnet.ts         full tournament against a live server and testnet
 │   └── fastfs-upload.ts       publish a wasm to FastFS for OutLayer
-├── public/favicon.svg
+├── public/                logo, favicon, app icon and social preview image
 ├── Dockerfile, docker-compose.yml, .railway/   container, local Postgres, Railway infrastructure
 └── .env.example               every configuration variable, documented
 ```
@@ -270,6 +277,7 @@ Constants: up to 9 seats, 5 minutes to 24 hours per match, registration up to 7 
 - **Decision safety:** a decision provider (model or rules) can only pick from the engine-issued legal actions. Timeouts or invalid answers fall back to check if legal, otherwise fold. Public explanations in real tournaments are engine-owned so model text can never leak hole cards.
 - **Tournament structure:** blinds start at 10/20 and step up every 10 hands; decisions time out after `AGENT_TIMEOUT_MS` (clamped to 1–30 s).
 - **Chip conservation** is checked by tests on every hand: no action can create or destroy chips.
+- **Model explanations:** each model also returns a one-sentence reason. Because it can mention hole cards, it is stored apart from the public hand record (`decision_notes`) and only served by `/api/tournaments/:id/notes` once the tournament has settled on-chain.
 
 ---
 
@@ -278,12 +286,23 @@ Constants: up to 9 seats, 5 minutes to 24 hours per match, registration up to 7 
 `/#/practice` (server: `src/server/arena/practice.ts`, UI: `src/ui/pages/PracticePage.tsx`).
 
 - Four seats: your agent plus GRANITE (Conservative), VIPER (Aggressive) and MIRAGE (Bluff Heavy). 1,000 chips each, blinds 10/20 rising every 5 hands, up to 30 hands or until one player is left.
-- Every seat uses the engine's built-in rules policy, so a game is computed in a few milliseconds and costs nothing. No model calls, nothing written to the database, nothing on-chain.
+- Every seat is played by `src/engine/policy.ts`: it estimates its chance of winning by Monte Carlo simulation against the live opponents (a cached preflop table plus 150 simulated run-outs postflop, using a fast 7-card evaluator checked against the engine's), compares it with the price of calling and applies a style (looseness, aggression, bluff rate; Mathematical plays strict pot odds; Adaptive shoves or folds when short and steals late). A full game takes about 30 ms. No model calls, nothing written to the database, nothing on-chain.
+- Balanced by design: over 400 simulated games per strategy, every style won 24–28% of the time (25% is a fair share), with Mathematical and Adaptive slightly ahead.
 - Each hand uses a fresh deck from a random 256-bit seed (shown in the UI).
 - Because practice cards are not secret, every decision gets a plain-language explanation of the rule that fired, including the pot odds of a call.
 - Rate limited to 10 games per minute per client. **Make it real on NEAR** carries the name and strategy into agent creation.
 
 ---
+
+## House agents
+
+A real tournament needs at least two agents, which is hard when only one person is online. House agents fix that without faking anything (`src/server/arena/house.ts`):
+
+- **HOUSE GRANITE** (Conservative), **HOUSE VIPER** (Aggressive) and **HOUSE MIRAGE** (Bluff Heavy) are ordinary Holecard agents: their own NEAR sub-accounts, restricted server keys, TEE models and public records.
+- They only join when a tournament creator clicks **Fill empty seats with house agents**, and only on tables with an entry fee up to `HOUSE_MAX_ENTRY_NEAR` (default 1 NEAR). At least one seat must belong to a real player.
+- The operator tops up exactly the missing part of a house agent's entry fee with `deposit`; winnings stay in the house agent's arena balance and fund later entries.
+- Each has its own owner key derived from `AGENT_KEY_SECRET`, so the contract's one-seat-per-owner rule still holds. Their account names carry a short fingerprint of that secret (`house-granite-1a2b.<contract>`), and if the stored server key is missing from the account (for example after a database reset) the server rotates it with the owner key.
+- They are labelled HOUSE on agent cards, agent pages and the leaderboard. Set `HOUSE_AGENTS=off` to disable them.
 
 ## Rankings: profit and skill rating
 
@@ -351,6 +370,8 @@ All routes are under `/api`. "Owner" means a signed-in session (NEP-413 or NEAR 
 | GET | `/tournaments`, `/tournaments/:id` | | list and detail |
 | GET | `/tournaments/:id/operations`, `/onchain`, `/tee-receipts`, `/verification` | | NEAR transactions, contract state, receipts, replay verification |
 | GET | `/tournaments/:id/replay/:hand` | | one hand (seed withheld until settled) |
+| GET | `/tournaments/:id/notes` | | each model's own explanations (sealed until settled) |
+| POST | `/tournaments/:id/fill-house` | owner | creator fills open seats with house agents |
 | POST | `/tournaments`, `/tournaments/:id/reserve`, `/tournaments/:id/launch`, `/tournaments/:id/entries/:agentId/enter` | owner | create, reserve a seat, lock the roster on NEAR, enter |
 | GET · POST | `/practice` | | practice strategies; play a practice game |
 | GET | `/leaderboard` | | rankings with profit, ROI and skill rating |
@@ -362,6 +383,8 @@ WebSocket `/ws` pushes `turn.thinking`, `hand.action`, `agent.created`, `tournam
 ## Run it locally
 
 Requirements: Node.js 22+ (24 LTS recommended), Docker (for Postgres) or any Postgres 15+. For the contract: Rust with `wasm32-unknown-unknown`, [`cargo-near`](https://github.com/near/cargo-near) and [`near-cli-rs`](https://github.com/near/near-cli-rs).
+
+Step-by-step deployment with checks at every stage: **[docs/SETUP.md](docs/SETUP.md)**.
 
 **Quickest (no NEAR keys, practice table and UI only):**
 
@@ -382,7 +405,7 @@ Email/Google sign-in uses NEAR Auth's shared testnet client, which only allows t
 | --- | --- |
 | `npm run dev` | API (tsx watch) and Vite dev server together |
 | `npm run build` / `npm start` | type-check and build the UI; serve API + built UI |
-| `npm test` | vitest: engine, NEAR crypto, relayer, practice, rating and HTTP API (48 tests) |
+| `npm test` | vitest: engine, policy, NEAR crypto, relayer, practice, rating, house agents and HTTP API (53 tests) |
 | `npm run test:contracts` | `cargo test` for the contract |
 | `npm run typecheck` | `tsc --noEmit` (strict, no unused locals) |
 | `npm run format` / `format:check` | Prettier |
@@ -409,6 +432,7 @@ Every variable is documented in [`.env.example`](.env.example). The important on
 | `FASTAUTH_CLIENT_ID`, `FASTAUTH_CONTRACT_ID`, `FASTAUTH_MPC_CONTRACT_ID` | NEAR Auth |
 | `INTENTS_QUOTE_RECIPIENT`, `ONECLICK_JWT` | NEAR Intents quotes |
 | `AGENT_MARKET_TOKEN`, `AGENT_MARKET_LISTING_URL` | Agent Market worker |
+| `HOUSE_AGENTS`, `HOUSE_MAX_ENTRY_NEAR` | house agents on/off and the largest entry the house pays |
 | `AGENT_CREATE_HOURLY_CAP`, `TRUST_PROXY` | abuse limits and proxy hops |
 
 ---
@@ -447,11 +471,12 @@ It runs the contract tests, builds, deploys without an init call and checks that
 | `tests/audit-regressions.test.ts` | minimum-raise rules, short all-in not reopening raises, null provider answers, full 256-bit seed use, 250 adversarial action sequences with uneven stacks |
 | `tests/near.test.ts` | NEP-413 hashing and signatures, agent key vault, commitments shared with the contract |
 | `tests/relayer.test.ts` | delegate-action checks and NEAR Auth implicit accounts |
-| `tests/practice.test.ts` | practice games conserve chips and explain every decision; input validation; Elo behaviour |
+| `tests/practice.test.ts` | practice games conserve chips and explain every decision; input validation; Elo behaviour; the fast evaluator matches the engine on 3,000 random pairs; styles play differently |
+| `tests/house.test.ts` | house owner keys are deterministic, distinct and valid implicit accounts; names change with the secret |
 | `tests/api.integration.test.ts` | the running HTTP server: unknown routes, same-origin and session protection on writes, malformed NEP-413 sign-ins, public config without secrets, WebSocket feed without private state |
 
 ```sh
-npm test                 # 48 tests
+npm test                 # 53 tests
 npm run test:contracts   # 29 tests
 ```
 
@@ -463,15 +488,14 @@ npm run test:contracts   # 29 tests
 - **NVIDIA NRAS JWT claims are decoded** and checked for verdict and nonce, but the JWT signature is not yet verified against NVIDIA's JWKS.
 - **NEAR Intents are quotes only** on testnet; nothing executes.
 - **Short tournaments are high variance**, so ratings need many settled games to mean much.
-- **Real tournaments need two or more players**; the practice table is the single-player path for now.
+- **House agents cost the operator NEAR** when they lose; keep `HOUSE_MAX_ENTRY_NEAR` small on public deployments.
 
 ## Roadmap
 
-1. House agents that fill empty seats in real tournaments, so a table is always available.
-2. Reveal each model's reasoning after its hand is over (never during), so spectators see why it played.
-3. Let owners write the strategy prompt itself instead of choosing a preset.
-4. Longer formats and per-hand ratings so skill shows through variance.
-5. A rake or treasury so the economy has a sink, and mainnet with NEAR Intents funding live.
+1. Let owners write the strategy prompt itself instead of choosing a preset.
+2. Longer formats and per-hand ratings so skill shows through variance.
+3. Scheduled house tables that open on their own every few minutes.
+4. A rake or treasury so the economy has a sink, and mainnet with NEAR Intents funding live.
 
 ---
 
@@ -481,7 +505,7 @@ This repository started as **Agent Arena on Arc** (EVM testnet, Circle wallets, 
 
 - Diff: `git diff pre-hackathon near-hackathon` (on GitHub: `/compare/pre-hackathon...near-hackathon`).
 - **Baseline (not judged):** the poker engine (`src/engine/`), replay verifier, original UI shell, Postgres tournament scheduler.
-- **New in the window:** the NEAR contract (`contracts/near/`), agent sub-accounts with restricted keys and the key vault, NEP-413 auth, NEAR Connect and NEAR Auth flows, the NEP-366 relayer and starter stakes, NEAR AI Cloud private inference with attestation and signature receipts, OutLayer VRF shuffles, NEP-245 trophies, NEAR Intents quotes, the Agent Market worker, sha256 commitments shared with the contract, the practice table, Elo ratings, the redesigned UI, the Holecard rename and project restructure, and the removal of all Arc/Circle/Solidity code.
+- **New in the window:** the NEAR contract (`contracts/near/`), agent sub-accounts with restricted keys and the key vault, NEP-413 auth, NEAR Connect and NEAR Auth flows, the NEP-366 relayer and starter stakes, NEAR AI Cloud private inference with attestation and signature receipts, OutLayer VRF shuffles, NEP-245 trophies, NEAR Intents quotes, the Agent Market worker, sha256 commitments shared with the contract, the practice table and its simulation-based rules player, Elo ratings, house agents, sealed model explanations, the redesigned UI, the Holecard rename, logo and project restructure, and the removal of all Arc/Circle/Solidity code.
 
 ## Credits and license
 

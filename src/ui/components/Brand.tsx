@@ -1,31 +1,15 @@
 import { go, type Health } from '../lib/api';
 
-/** Holecard mark: two face-down hole cards, the front one carrying the green diamond. */
-export function Mark({ size = 20 }: { size?: number }) {
+/** Holecard mark: a playing card with a hole punched through it and its corner peeled back to show green. */
+export function Mark({ size = 22 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
-      <rect
-        className="ring"
-        x="3.2"
-        y="4.6"
-        width="11"
-        height="15.4"
-        rx="2"
-        transform="rotate(-12 8.7 12.3)"
-        fill="none"
-        strokeWidth="1.4"
+      <path
+        className="card"
+        fillRule="evenodd"
+        d="M7 2h7.5L19 6.5V20a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm1.8 11.6a3.2 3.2 0 1 0 6.4 0a3.2 3.2 0 1 0-6.4 0Z"
       />
-      <rect
-        className="ring face"
-        x="9.6"
-        y="3.4"
-        width="11"
-        height="15.4"
-        rx="2"
-        transform="rotate(9 15.1 11.1)"
-        strokeWidth="1.4"
-      />
-      <path className="core" d="M15.1 7.9 18 11.1 15.1 14.3 12.2 11.1Z" />
+      <path className="core" d="M14.5 2v3a1.5 1.5 0 0 0 1.5 1.5h3Z" />
     </svg>
   );
 }

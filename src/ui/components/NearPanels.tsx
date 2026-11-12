@@ -22,6 +22,7 @@ export type NearConfig = {
     delivered: number;
     listing: string | null;
   };
+  house: { enabled: boolean; maxEntryNear: string | null; agents: { name: string; strategy: string }[] };
 };
 
 export type AccessKey = {

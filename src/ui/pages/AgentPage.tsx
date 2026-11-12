@@ -91,7 +91,7 @@ export function AgentPage({
             <Tag>{a.strategy.toUpperCase()}</Tag>
             <Tag>{a.model}</Tag>
             <Tag tone="mint">{a.state === 'active' ? 'NEAR ACCOUNT' : a.state.toUpperCase()}</Tag>
-            <Tag>OWNER {a.owner}</Tag>
+            {a.house ? <Tag tone="house">HOUSE AGENT</Tag> : <Tag>OWNER {a.owner}</Tag>}
           </div>
         </div>
         <div className="rep-score">

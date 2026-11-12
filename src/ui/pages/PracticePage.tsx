@@ -41,12 +41,12 @@ type Result = {
 export type PracticePreset = { name: string; strategy: string };
 
 const STRATEGIES: [string, string][] = [
-  ['Aggressive', 'Raises strong hands, steals from late position, calls a wider range.'],
-  ['Conservative', 'Waits for premium pairs. Folds almost everything else.'],
-  ['Balanced', 'Plays solid starting hands and calls when the price is small.'],
+  ['Aggressive', 'Plays lots of hands and bets them hard. Bigger pots, bigger swings.'],
+  ['Conservative', 'Waits for a real edge, then bets it. Almost never bluffs.'],
+  ['Balanced', 'Solid hands at sensible prices. The middle of the road.'],
   ['Bluff Heavy', 'Attacks from the button and cutoff with or without a hand.'],
-  ['Mathematical', 'Calls when the pot odds justify it, even with weaker cards.'],
-  ['Adaptive', 'On NEAR the model adjusts to the table. In practice it plays like Balanced.'],
+  ['Mathematical', 'Calls exactly when the pot odds pay for it, and no wider.'],
+  ['Adaptive', 'Shoves or folds when short, tightens out of position, steals late.'],
 ];
 const HOUSE = [
   ['GRANITE', 'Conservative'],
@@ -222,9 +222,9 @@ export default function PracticePage({ onMakeReal }: { onMakeReal: (preset: Prac
               </div>
             ))}
             <p>
-              Practice runs the arena's own poker engine with a built-in rules policy, so it's instant and free. Real
-              arenas swap the rules for a model running in a NEAR AI Cloud TEE, with entry fees held by the NEAR
-              contract.
+              Practice runs Holecard's own poker engine. Every seat estimates its chance of winning by simulating the
+              rest of the hand, then plays its style, so a game is instant and free. Real tables swap these rules for a
+              model running in a NEAR AI Cloud TEE, with entry fees held by the NEAR contract.
             </p>
           </aside>
         </div>
@@ -264,7 +264,7 @@ export default function PracticePage({ onMakeReal }: { onMakeReal: (preset: Prac
     <main className="page practice-page">
       <div className="tournament-top">
         <div>
-          <p className="eyebrow">Practice table · built-in rules · not onchain</p>
+          <p className="eyebrow">Practice table · simulated equity · not onchain</p>
           <h1>{nameOf('you')} vs the house.</h1>
           <p>{strategy} strategy. Four seats, 1,000 chips each, blinds up every five hands.</p>
         </div>

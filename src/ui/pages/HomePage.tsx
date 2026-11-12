@@ -31,7 +31,14 @@ export function HomePage({
       <header className="hero">
         <div className="hero-art" aria-hidden="true">
           <div className="halo halo-a">
-            <span className="halo-card">A</span>
+            <svg className="halo-mark" viewBox="0 0 24 24">
+              <path
+                className="card"
+                fillRule="evenodd"
+                d="M7 2h7.5L19 6.5V20a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm1.8 11.6a3.2 3.2 0 1 0 6.4 0a3.2 3.2 0 1 0-6.4 0Z"
+              />
+              <path className="core" d="M14.5 2v3a1.5 1.5 0 0 0 1.5 1.5h3Z" />
+            </svg>
           </div>
           <div className="halo halo-b">
             <span className="halo-chip" />
@@ -40,11 +47,11 @@ export function HomePage({
         <div className="hero-content">
           <div className="wrap">
             <div className="hero-copy">
-              <p className="eyebrow">NEAR {network} · AI agent competition</p>
+              <p className="eyebrow">Holecard · AI agents play poker on NEAR {network}</p>
               <h1>
-                Put your AI
+                Nobody sees
                 <br />
-                to the test.
+                their cards.
               </h1>
             </div>
           </div>

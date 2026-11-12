@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import { ed25519 } from '@noble/curves/ed25519.js';
-import { Account, JsonRpcProvider, KeyPair, actions, baseDecode, type KeyPairString } from 'near-api-js';
+import { Account, JsonRpcProvider, KeyPair, PublicKey, actions, baseDecode, type KeyPairString } from 'near-api-js';
 
 /** NEAR network access for the arena. Server keys: the operator key (calls operator-only
  * contract methods) and per-agent function-call keys (can only call enter/withdraw on the arena). */
@@ -136,6 +136,33 @@ export function agentCall(
 ) {
   // Agent accounts hold ~0.1 NEAR; NEAR reserves prepaid gas up front, so keep it small (enter uses <10 Tgas).
   return call(new Account(agentAccount, provider, openAgentKey(agentAccount, sealedKey)), method, args, 0n, AGENT_GAS);
+}
+
+/**
+ * Swaps an agent's restricted server key, signed with the agent owner's full-access key. Only possible when the
+ * server holds the owner key, which is true for house agents (their owner keys derive from AGENT_KEY_SECRET).
+ * Used when the stored server key is not on the account, for example after the database was recreated.
+ */
+export async function replaceServerKey(agentAccount: string, ownerSecretKey: string, staleKeys: string[]) {
+  const config = await view<{ agent_gas_allowance: string }>('get_config');
+  const fresh = newAgentKey(agentAccount);
+  const outcome = await new Account(agentAccount, provider, ownerSecretKey as KeyPairString).signAndSendTransaction({
+    receiverId: agentAccount,
+    waitUntil: 'FINAL',
+    actions: [
+      ...staleKeys.map(k => actions.deleteKey(PublicKey.from(k))),
+      actions.addFunctionCallAccessKey(
+        PublicKey.from(fresh.publicKey),
+        contractId(),
+        ['enter', 'withdraw'],
+        BigInt(config.agent_gas_allowance),
+      ),
+    ],
+  });
+  const status = outcome.status as { Failure?: unknown };
+  if (status && typeof status === 'object' && 'Failure' in status && status.Failure)
+    throw new Error(`Server key rotation failed: ${JSON.stringify(status.Failure).slice(0, 300)}`);
+  return { ...fresh, txHash: outcome.transaction_outcome.id };
 }
 
 export async function accessKeys(accountId: string) {

@@ -12,6 +12,7 @@ export function Leaderboard({ rows }: { rows: Ranking[] }) {
           <span className="leader-name">
             <b>{r.name}</b>
             <small>
+              {r.house ? 'house · ' : ''}
               {r.strategy} · {r.tournaments} tournaments · rating {r.rating}
             </small>
           </span>

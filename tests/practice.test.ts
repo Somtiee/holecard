@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { runPractice, practiceInput } from '../src/server/arena/practice';
 import { ELO_START, eloRatings } from '../src/server/arena/rating';
+import { preflopEquity, score7 } from '../src/engine/policy';
+import { compareHands, evaluateHand, seededRandom } from '../src/engine/poker';
 
 describe('practice sit-and-go', () => {
   it('plays a complete game that conserves chips and explains every decision', async () => {
@@ -57,5 +59,37 @@ describe('Elo rating', () => {
     ]);
     const upset = eloRatings([['c', 'd']]);
     expect(r.get('c')! - ELO_START).toBeGreaterThan(upset.get('c')! - ELO_START);
+  });
+});
+
+describe('practice policy', () => {
+  it('fast 7-card scores order hands exactly like the engine evaluator', () => {
+    const deck = [...'23456789TJQKA'].flatMap(r => [...'shdc'].map(s => r + s));
+    const enc = (c: string) => ('23456789TJQKA'.indexOf(c[0]) + 2) * 4 + 'shdc'.indexOf(c[1]);
+    const random = seededRandom(7);
+    for (let n = 0; n < 3000; n++) {
+      const cards = [...deck].sort(() => random() - 0.5).slice(0, 14);
+      const a = cards.slice(0, 7),
+        b = cards.slice(7);
+      const engine = Math.sign(compareHands(evaluateHand(a), evaluateHand(b)));
+      const fast = Math.sign(score7(a.map(enc)) - score7(b.map(enc)));
+      expect(fast).toBe(engine);
+    }
+  });
+  it('rates pocket aces far above seven-deuce and only picks legal actions', async () => {
+    expect(preflopEquity(['As', 'Ad'], 1)).toBeGreaterThan(0.8);
+    expect(preflopEquity(['7c', '2d'], 1)).toBeLessThan(0.4);
+    const r = await runPractice({ name: 'legal', strategy: 'Adaptive' });
+    for (const h of r.hands)
+      for (const d of h.decisions) expect(['fold', 'check', 'call', 'raise', 'all-in']).toContain(d.action);
+  });
+  it('plays styles differently: aggressive enters more pots than conservative', async () => {
+    let aggressive = 0,
+      conservative = 0;
+    for (let i = 0; i < 6; i++) {
+      aggressive += (await runPractice({ name: 'a', strategy: 'Aggressive' })).you.vpip;
+      conservative += (await runPractice({ name: 'c', strategy: 'Conservative' })).you.vpip;
+    }
+    expect(aggressive).toBeGreaterThan(conservative);
   });
 });

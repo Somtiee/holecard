@@ -14,6 +14,7 @@ export type Agent = {
   profitNear?: string;
   roi?: number;
   hands?: number;
+  house?: boolean;
 };
 
 export type Entry = { agentId: string; state: string; nearAccount?: string };
@@ -102,6 +103,7 @@ export type Ranking = {
   winRate: number;
   reputation: number;
   rating: number;
+  house: boolean;
 };
 
 export type Analytics = {

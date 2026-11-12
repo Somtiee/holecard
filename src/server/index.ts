@@ -1,7 +1,7 @@
 import './env';
 import express from 'express';
 import { createServer } from 'node:http';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
 import { pool, migrate } from './db';
@@ -34,17 +34,20 @@ import {
   reserveSeat,
   submitEntry,
   teeReceipts,
+  decisionNotes,
   tickArena,
   verifyMatch,
 } from './arena/service';
 import { publicAgent } from './types';
 import { PRACTICE_STRATEGIES, runPractice } from './arena/practice';
+import { HOUSE_PERSONAS, fillWithHouse, houseEnabled, houseMaxEntryYocto } from './arena/house';
 import {
   NEAR_EXPLORER,
   NEAR_NETWORK,
   NEAR_RPC_URL,
   contractId,
   nearConfigured,
+  formatNear,
   operatorCall,
   txUrl,
   view,
@@ -169,6 +172,11 @@ app.get('/api/config', (_req, res) =>
     sponsorNear: NEAR_NETWORK === 'testnet' ? Number(process.env.SPONSOR_NEAR || 0) : 0,
     intentsReady: Boolean(process.env.INTENTS_QUOTE_RECIPIENT),
     agentMarket: agentMarketStatus(),
+    house: {
+      enabled: houseEnabled(),
+      maxEntryNear: houseEnabled() ? formatNear(houseMaxEntryYocto()) : null,
+      agents: HOUSE_PERSONAS.map(p => ({ name: p.name, strategy: p.strategy })),
+    },
   }),
 );
 
@@ -338,6 +346,17 @@ app.get(
   }),
 );
 app.get(
+  '/api/tournaments/:id/notes',
+  handle(async (req, res) => {
+    const data = await decisionNotes(param(req.params.id));
+    if (!data) {
+      res.status(404).json({ error: 'Tournament not found' });
+      return;
+    }
+    res.json(data);
+  }),
+);
+app.get(
   '/api/tournaments/:id/tee-receipts',
   handle(async (req, res) => {
     res.json(await teeReceipts(param(req.params.id)));
@@ -384,6 +403,16 @@ app.post(
   }),
 );
 app.post(
+  '/api/tournaments/:id/fill-house',
+  requireOwner,
+  handle(async (req, res) => {
+    await fillWithHouse(res.locals.owner, param(req.params.id));
+    const t = (await getTournament(param(req.params.id)))!.public;
+    broadcast('tournament.updated', t);
+    res.status(201).json(t);
+  }),
+);
+app.post(
   '/api/tournaments/:id/launch',
   requireOwner,
   handle(async (req, res) => {
@@ -425,8 +454,13 @@ app.use('/api', (_req, res) => {
   res.status(404).json({ error: 'API route not found' });
 });
 if (existsSync(resolve('dist/index.html'))) {
-  app.use(express.static(resolve('dist')));
-  app.get(/.*/, (_req, res) => res.sendFile(resolve('dist/index.html')));
+  // Social cards (X, Telegram, Discord) need absolute image URLs, so the built page is served with PUBLIC_ORIGIN filled in.
+  const page = readFileSync(resolve('dist/index.html'), 'utf8').replace(
+    /content="\/og\.png"/g,
+    `content="${origin}/og.png"`,
+  );
+  app.use(express.static(resolve('dist'), { index: false }));
+  app.get(/.*/, (_req, res) => res.type('html').send(page));
 }
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   const err = error as { code?: string; message?: string };

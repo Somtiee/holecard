@@ -61,6 +61,12 @@ export async function migrate() {
       created_at timestamptz NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS tee_receipts_tournament_idx ON tee_receipts(tournament_id,hand_number);
+    ALTER TABLE agents ADD COLUMN IF NOT EXISTS house boolean NOT NULL DEFAULT false;
+    CREATE TABLE IF NOT EXISTS decision_notes (
+      tournament_id uuid NOT NULL REFERENCES tournaments(id), hand_number integer NOT NULL, seq integer NOT NULL,
+      agent_id uuid NOT NULL REFERENCES agents(id), note text NOT NULL,
+      PRIMARY KEY (tournament_id, hand_number, seq)
+    );
     CREATE TABLE IF NOT EXISTS sponsorships (
       owner text PRIMARY KEY, agent text NOT NULL, tx_hash text, created_at timestamptz NOT NULL DEFAULT now()
     );

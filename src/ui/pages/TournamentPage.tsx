@@ -34,7 +34,8 @@ export function TournamentPage({
     [handNumber, setHandNumber] = useState(1),
     [playing, setPlaying] = useState(false),
     [busy, setBusy] = useState(false),
-    [why, setWhy] = useState<Decision | null>(null);
+    [why, setWhy] = useState<{ d: Decision; hand: number; seq: number } | null>(null),
+    [notes, setNotes] = useState<Map<string, string> | null>(null);
   useEffect(() => {
     if (t)
       void api<Operation[]>(`/api/tournaments/${id}/operations`)
@@ -50,6 +51,13 @@ export function TournamentPage({
       .then(setHand)
       .catch(() => setHand(null));
   }, [id, handNumber, t?.handNumber]);
+  // Each model's own explanations are sealed until the tournament settles onchain.
+  useEffect(() => {
+    if (t?.state !== 'settled') return;
+    void api<{ sealed: boolean; notes: { hand: number; seq: number; note: string }[] }>(`/api/tournaments/${id}/notes`)
+      .then(r => setNotes(new Map(r.notes.map(n => [`${n.hand}:${n.seq}`, n.note]))))
+      .catch(() => {});
+  }, [id, t?.state]);
   useEffect(() => {
     if (!playing || !t || handNumber >= t.handNumber) return;
     const timer = setTimeout(() => setHandNumber(x => x + 1), 1800);
@@ -131,7 +139,11 @@ export function TournamentPage({
               .slice(-6)
               .reverse()
               .map((d, i) => (
-                <button className="decision-row" key={`${d.timestamp}-${i}`} onClick={() => setWhy(d)}>
+                <button
+                  className="decision-row"
+                  key={`${d.timestamp}-${i}`}
+                  onClick={() => setWhy({ d, hand: t.lastHand!.handNumber, seq: t.lastHand!.decisions.length - 1 - i })}
+                >
                   <span className="decision-icon">{d.action === 'raise' ? '↗' : d.action === 'fold' ? '×' : '→'}</span>
                   <span>
                     <b>{d.agent}</b>
@@ -176,6 +188,31 @@ export function TournamentPage({
                     RESERVE SEAT
                   </button>
                 </div>
+                {(() => {
+                  const house = arena.config?.house;
+                  const open = t.capacity - t.entries.length;
+                  const hasPlayer = t.entries.some(e => !arena.agents.find(a => a.id === e.agentId)?.house);
+                  if (arena.owner !== t.creator || !house?.enabled || open <= 0) return null;
+                  if (Number(t.entryNear) > Number(house.maxEntryNear))
+                    return <p className="house-note">House agents join tables up to {house.maxEntryNear} NEAR.</p>;
+                  return (
+                    <div className="house-fill">
+                      <p>
+                        No one else around? House agents (
+                        {house.agents.map(a => a.name.replace('HOUSE ', '')).join(', ')}) are real NEAR agents on TEE
+                        models. The house pays their entry; they are labelled HOUSE.
+                      </p>
+                      <button
+                        className="button-secondary full"
+                        disabled={busy || !hasPlayer}
+                        title={hasPlayer ? undefined : 'Reserve a seat for your own agent first'}
+                        onClick={() => void invoke(`/api/tournaments/${t.id}/fill-house`)}
+                      >
+                        Fill {open} empty seat{open === 1 ? '' : 's'} with house agents
+                      </button>
+                    </div>
+                  );
+                })()}
                 {arena.owner === t.creator && t.entries.length === t.capacity && (
                   <button
                     className="button-primary full"
@@ -318,7 +355,7 @@ export function TournamentPage({
                 </div>
                 <div className="replay-actions">
                   {hand.decisions.map((d, i) => (
-                    <button key={i} onClick={() => setWhy(d)}>
+                    <button key={i} onClick={() => setWhy({ d, hand: hand.handNumber, seq: i })}>
                       <span>{String(i + 1).padStart(2, '0')}</span>
                       <b>{d.agent}</b>
                       <strong>{d.action.toUpperCase()}</strong>
@@ -371,28 +408,40 @@ export function TournamentPage({
             <button className="modal-x" onClick={() => setWhy(null)}>
               <X size={19} />
             </button>
-            <small>DECISION DESK / HAND CONTEXT</small>
+            <small>DECISION DESK / HAND {why.hand}</small>
             <h2>
-              Why did {why.agent}
+              Why did {why.d.agent}
               <br />
-              {why.action}?
+              {why.d.action}?
             </h2>
-            <p>{why.reason}</p>
+            <p>{why.d.reason}</p>
+            <div className="model-note">
+              <small>IN ITS OWN WORDS</small>
+              {t.state !== 'settled' ? (
+                <p>Sealed until this tournament settles on NEAR. The model's explanation can mention its hole cards.</p>
+              ) : notes?.get(`${why.hand}:${why.seq}`) ? (
+                <p>“{notes.get(`${why.hand}:${why.seq}`)}”</p>
+              ) : (
+                <p>No explanation was recorded for this move (fallback action, fixture policy or an older match).</p>
+              )}
+            </div>
             <div>
               <span>
-                POSITION <b>{why.position}</b>
+                POSITION <b>{why.d.position}</b>
               </span>
               <span>
-                ROUND <b>{why.stage.toUpperCase()}</b>
+                ROUND <b>{why.d.stage.toUpperCase()}</b>
               </span>
               <span>
-                POT <b>{why.pot} CHIPS</b>
+                POT <b>{why.d.pot} CHIPS</b>
               </span>
               <span>
-                LATENCY <b>{why.latencyMs} MS</b>
+                LATENCY <b>{why.d.latencyMs} MS</b>
               </span>
             </div>
-            <footer>Public action metadata only. Private model reasoning is never exposed.</footer>
+            <footer>
+              Model explanations are stored apart from the public hand record and released after settlement.
+            </footer>
           </div>
         </div>
       )}

@@ -12,6 +12,8 @@ export default defineRailway(() => {
       ARENA_CONTRACT_ID: preserve(), ARENA_OPERATOR_ID: preserve(), ARENA_OPERATOR_PRIVATE_KEY: preserve(), AGENT_KEY_SECRET: preserve(),
       NEARAI_API_KEY: preserve(), NEARAI_BASE_URL: preserve(), NEARAI_MODELS: preserve(), AGENT_TIMEOUT_MS: preserve(), ARENA_DECISION_POLICY: preserve(),
       INTENTS_QUOTE_RECIPIENT: preserve(), ONECLICK_JWT: preserve(), AGENT_MARKET_TOKEN: preserve(), AGENT_MARKET_LISTING_URL: preserve(),
+      RELAYER_ID: preserve(), RELAYER_PRIVATE_KEY: preserve(), SPONSOR_NEAR: preserve(), SPONSOR_DAILY_CAP: preserve(), AGENT_CREATE_HOURLY_CAP: preserve(),
+      FASTAUTH_CLIENT_ID: preserve(), FASTAUTH_CONTRACT_ID: preserve(), FASTAUTH_MPC_CONTRACT_ID: preserve(), HOUSE_AGENTS: preserve(), HOUSE_MAX_ENTRY_NEAR: preserve(), TRUST_PROXY: preserve(),
       PUBLIC_ORIGIN: "https://agent-arena-production-7923.up.railway.app", PUBLIC_HOSTNAME: "agent-arena-production-7923.up.railway.app", HOST: preserve() },
   });
 

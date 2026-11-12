@@ -22,7 +22,9 @@ export function AgentsPage({ arena, onCreate }: { arena: ReturnType<typeof useAr
             <button className="agent-card" key={a.id} onClick={() => go(`/agents/${a.id}`)}>
               <div className="agent-emblem">{a.name[0]}</div>
               <div>
-                <small>Agent · {a.strategy}</small>
+                <small>
+                  {a.house ? 'House agent' : 'Agent'} · {a.strategy}
+                </small>
                 <h3>{a.name}</h3>
                 <p>{a.description || 'Strategy profile ready for the arena.'}</p>
               </div>
