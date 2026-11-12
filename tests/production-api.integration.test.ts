@@ -3,6 +3,8 @@ import {WebSocket} from 'ws';
 import {server} from '../src/server/production/index';
 
 let base:string;
+// The server rejects writes whose Origin differs from PUBLIC_ORIGIN (loaded from .env when present).
+const origin=()=>process.env.PUBLIC_ORIGIN||`http://${process.env.HOST||'127.0.0.1'}:${process.env.PORT||8787}`;
 beforeAll(async()=>{
   await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
   const address=server.address();
@@ -21,13 +23,13 @@ it('protects writes with same-origin and creator authentication',async()=>{
   const crossOrigin=await fetch(`${base}/api/agents`,{method:'POST',headers:{origin:'https://untrusted.example','content-type':'application/json'},body:'{}'});
   expect(crossOrigin.status).toBe(403);
   for(const path of ['/api/agents','/api/tournaments','/api/agents/00000000-0000-4000-8000-000000000000/provision','/api/tournaments/00000000-0000-4000-8000-000000000000/launch','/api/agent-market/preview']){
-    const response=await fetch(`${base}${path}`,{method:'POST',headers:{origin:'http://127.0.0.1:8787','content-type':'application/json'},body:'{}'});
+    const response=await fetch(`${base}${path}`,{method:'POST',headers:{origin:origin(),'content-type':'application/json'},body:'{}'});
     expect(response.status,path).toBe(401);
   }
 });
 
 it('rejects malformed NEP-413 sign-in before touching storage',async()=>{
-  const response=await fetch(`${base}/api/auth/verify`,{method:'POST',headers:{origin:'http://127.0.0.1:8787','content-type':'application/json'},body:JSON.stringify({accountId:'Not An Account',publicKey:'x',signature:'y',nonce:'z'})});
+  const response=await fetch(`${base}/api/auth/verify`,{method:'POST',headers:{origin:origin(),'content-type':'application/json'},body:JSON.stringify({accountId:'Not An Account',publicKey:'x',signature:'y',nonce:'z'})});
   expect(response.status).toBe(400);
 });
 

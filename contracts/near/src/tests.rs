@@ -207,7 +207,7 @@ fn running_match_cannot_be_cancelled_early() {
 fn withdraw_always_pays_owner() {
     let mut arena = three();
     ctx(A, 0, 2_000); // the agent's restricted key calls withdraw
-    arena.withdraw(acc(A), U128(FEE));
+    let _ = arena.withdraw(acc(A), U128(FEE));
     assert_eq!(arena.get_agent(acc(A)).unwrap().balance.0, 2 * FEE);
     // The resulting promise is a transfer to alice.testnet, never to the caller.
     let receipts = near_sdk::test_utils::get_created_receipts();
@@ -219,7 +219,7 @@ fn withdraw_always_pays_owner() {
 fn stranger_cannot_withdraw() {
     let mut arena = three();
     ctx("mallory.testnet", 0, 2_000);
-    arena.withdraw(acc(A), U128(1));
+    let _ = arena.withdraw(acc(A), U128(1));
 }
 
 #[test]
@@ -236,16 +236,16 @@ fn agent_names_are_validated() {
     ctx("operator.testnet", 0, 1_000);
     let pk: PublicKey = "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp".parse().unwrap();
     let pk2: PublicKey = "ed25519:DcA2MzgpJbrUATQLLceocVckhhAqrkingax4oJ9kZ847".parse().unwrap();
-    arena.create_agent("Bad.Name".into(), acc("alice.testnet"), pk, pk2);
+    let _ = arena.create_agent("Bad.Name".into(), acc("alice.testnet"), pk, pk2);
 }
 
 #[test]
 fn create_agent_issues_restricted_server_key() {
     let mut arena = three();
-    ctx("operator.testnet", 0, 1_000);
+    ctx("operator.testnet", NEAR / 10, 1_000);
     let owner_pk: PublicKey = "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp".parse().unwrap();
     let server_pk: PublicKey = "ed25519:DcA2MzgpJbrUATQLLceocVckhhAqrkingax4oJ9kZ847".parse().unwrap();
-    arena.create_agent("delta".into(), acc("dave.testnet"), owner_pk, server_pk);
+    let _ = arena.create_agent("delta".into(), acc("dave.testnet"), owner_pk, server_pk);
     let receipts = near_sdk::test_utils::get_created_receipts();
     let create = receipts.iter().find(|r| r.receiver_id == acc("delta.arena.testnet")).unwrap();
     let debug = format!("{:?}", create.actions);
@@ -309,7 +309,7 @@ fn verified_vrf_is_stored_and_unlocks_finalize() {
     with_vrf(&mut arena);
     running(&mut arena);
     ctx("operator.testnet", MIN_VRF_FEE, 3_000);
-    arena.request_randomness("t1".into());
+    let _ = arena.request_randomness("t1".into());
     ctx("arena.testnet", 0, 3_100);
     let alpha = format!("vrf:42:arena.testnet:{}", vrf_seed("t1"));
     assert!(arena.on_randomness("t1".into(), Ok(Some(vrf_response(&alpha, &vrf_key())))));
@@ -327,7 +327,7 @@ fn forged_or_misbound_vrf_is_rejected_and_retry_allowed() {
     with_vrf(&mut arena);
     running(&mut arena);
     ctx("operator.testnet", MIN_VRF_FEE, 3_000);
-    arena.request_randomness("t1".into());
+    let _ = arena.request_randomness("t1".into());
     ctx("arena.testnet", 0, 3_100);
     let forger = SigningKey::from_bytes(&[1u8; 32]);
     let alpha = format!("vrf:42:arena.testnet:{}", vrf_seed("t1"));
@@ -335,7 +335,7 @@ fn forged_or_misbound_vrf_is_rejected_and_retry_allowed() {
     assert!(arena.get_tournament("t1".into()).unwrap().randomness.is_none());
     // A genuine signature for another tournament's seed is rejected too.
     ctx("operator.testnet", MIN_VRF_FEE, 3_200);
-    arena.request_randomness("t1".into());
+    let _ = arena.request_randomness("t1".into());
     ctx("arena.testnet", 0, 3_300);
     let other = format!("vrf:43:arena.testnet:{}", vrf_seed("t2"));
     assert!(!arena.on_randomness("t1".into(), Ok(Some(vrf_response(&other, &vrf_key())))));
@@ -348,12 +348,12 @@ fn randomness_cannot_be_rerolled() {
     with_vrf(&mut arena);
     running(&mut arena);
     ctx("operator.testnet", MIN_VRF_FEE, 3_000);
-    arena.request_randomness("t1".into());
+    let _ = arena.request_randomness("t1".into());
     ctx("arena.testnet", 0, 3_100);
     let alpha = format!("vrf:42:arena.testnet:{}", vrf_seed("t1"));
     arena.on_randomness("t1".into(), Ok(Some(vrf_response(&alpha, &vrf_key()))));
     ctx("operator.testnet", MIN_VRF_FEE, 3_200);
-    arena.request_randomness("t1".into());
+    let _ = arena.request_randomness("t1".into());
 }
 
 #[test]
@@ -401,4 +401,54 @@ fn trophies_cannot_be_transferred() {
     let mut arena = three();
     ctx(B, 1, 1_000);
     arena.mt_transfer(acc(A), "champion".into(), U128(1));
+}
+
+fn agent_keys() -> (PublicKey, PublicKey) {
+    (
+        "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp".parse().unwrap(),
+        "ed25519:DcA2MzgpJbrUATQLLceocVckhhAqrkingax4oJ9kZ847".parse().unwrap(),
+    )
+}
+
+#[test]
+#[should_panic(expected = "ATTACH_EXACT_AGENT_SEED")]
+fn create_agent_cannot_spend_escrow() {
+    // Arena balances are held by the contract; a new agent account must be paid for by the operator.
+    let mut arena = three();
+    ctx("operator.testnet", 0, 1_000);
+    let (owner_pk, server_pk) = agent_keys();
+    let _ = arena.create_agent("delta".into(), acc("dave.testnet"), owner_pk, server_pk);
+}
+
+#[test]
+#[should_panic(expected = "ATTACH_EXACT_AGENT_SEED")]
+fn create_agent_rejects_overpayment() {
+    let mut arena = three();
+    ctx("operator.testnet", NEAR, 1_000);
+    let (owner_pk, server_pk) = agent_keys();
+    let _ = arena.create_agent("delta".into(), acc("dave.testnet"), owner_pk, server_pk);
+}
+
+#[test]
+fn create_agent_forwards_exactly_the_attached_seed() {
+    let mut arena = three();
+    ctx("operator.testnet", NEAR / 10, 1_000);
+    let (owner_pk, server_pk) = agent_keys();
+    let _ = arena.create_agent("delta".into(), acc("dave.testnet"), owner_pk, server_pk);
+    let receipts = near_sdk::test_utils::get_created_receipts();
+    let create = receipts.iter().find(|r| r.receiver_id == acc("delta.arena.testnet")).unwrap();
+    let debug = format!("{:?}", create.actions);
+    assert!(debug.contains(&format!("deposit: NearToken {{ inner: {} }}", NEAR / 10)), "{debug}");
+    assert!(arena.get_config().operator_funds_agents);
+}
+
+#[test]
+fn failed_agent_creation_refunds_the_operator() {
+    let mut arena = three();
+    ctx("arena.testnet", 0, 1_000);
+    assert!(!arena.on_agent_created(acc("delta.arena.testnet"), acc("dave.testnet"), Err(PromiseError::Failed)));
+    assert!(arena.get_agent(acc("delta.arena.testnet")).is_none());
+    let refund = near_sdk::test_utils::get_created_receipts().into_iter().find(|r| r.receiver_id == acc("operator.testnet"));
+    let debug = format!("{:?}", refund.expect("refund to operator").actions);
+    assert!(debug.contains(&format!("{}", NEAR / 10)), "{debug}");
 }

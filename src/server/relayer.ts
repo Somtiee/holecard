@@ -45,7 +45,9 @@ export async function relayFastAuthSign(input:{methodName?:unknown;argsBase64?:u
 export async function sponsorAgent(owner:string,agentAccount:string,deposit:(agent:string,yocto:bigint)=>Promise<{txHash:string}>){
   const amount=process.env.SPONSOR_NEAR?BigInt(Math.round(Number(process.env.SPONSOR_NEAR)*1e6))*10n**18n:0n;
   if(amount<=0n||process.env.NEAR_NETWORK==='mainnet')throw new Error('Starter stake is not offered on this arena');
-  await pool.query('CREATE TABLE IF NOT EXISTS sponsorships (owner text PRIMARY KEY, agent text NOT NULL, tx_hash text, created_at timestamptz NOT NULL DEFAULT now())');
+  // Implicit-account sign-ins cost nothing to create, so "once per owner" alone does not bound the operator's spend.
+  const today=await pool.query<{n:string}>(`SELECT count(*)::text AS n FROM sponsorships WHERE created_at>now()-interval '1 day'`);
+  if(Number(today.rows[0].n)>=Number(process.env.SPONSOR_DAILY_CAP||25))throw new Error('Starter stakes are used up for today. Deposit NEAR to this agent instead.');
   const claimed=await pool.query(`INSERT INTO sponsorships(owner,agent) VALUES($1,$2) ON CONFLICT(owner) DO NOTHING RETURNING owner`,[owner,agentAccount]);
   if(!claimed.rowCount)throw new Error('Starter stake was already claimed by this account');
   try{const sent=await deposit(agentAccount,amount);await pool.query('UPDATE sponsorships SET tx_hash=$2 WHERE owner=$1',[owner,sent.txHash]);return{txHash:sent.txHash,amountYocto:amount.toString()};}

@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {ELO_START,eloRatings} from './rating';
 import {fixtureDecision,playHand,type DecisionContext,type HandDecision,type PublicTurn} from '../../engine/hand';
 import {replayMatches} from '../verification';
 import {accessKeys,accountBalance,accountUrl,agentCall,contractId,formatNear,nearConfigured,newAgentKey,operatorCall,parseNear,txUrl,view} from '../near';
@@ -16,7 +17,7 @@ const GRACE_MS=60*60_000,REGISTRATION_MS=15*60_000;
 const fixtureMode=()=>process.env.ARENA_DECISION_POLICY==='fixture';
 export const decisionMode=()=>fixtureMode()?'fixture':'near-ai-cloud';
 
-type ChainConfig={randomness_source:{outlayer:string;project_id:string;vrf_pubkey_hex:string}|null};
+type ChainConfig={randomness_source:{outlayer:string;project_id:string;vrf_pubkey_hex:string}|null;agent_seed:string;operator_funds_agents?:boolean};
 let configCache:{at:number;value:ChainConfig}|null=null;
 export async function chainConfig(){if(!configCache||Date.now()-configCache.at>60_000)configCache={at:Date.now(),value:await view<ChainConfig>('get_config')};return configCache.value;}
 const VRF_FEE=50_000_000_000_000_000_000_000n,VRF_GAS=300_000_000_000_000n;
@@ -51,8 +52,19 @@ async function chainOp(key:string,meta:{kind:string;tournamentId?:string;agentId
 
 export async function listAgents(){const r=await pool.query<AgentRow>('SELECT * FROM agents ORDER BY created_at DESC LIMIT 200');return r.rows.map(a=>publicAgent(a));}
 export async function getAgent(id:string){const r=await pool.query<AgentRow>('SELECT * FROM agents WHERE id=$1',[id]);return r.rows[0]||null;}
-export async function listTournaments(){const r=await pool.query<TournamentRow>('SELECT * FROM tournaments ORDER BY created_at DESC LIMIT 100');
-  return Promise.all(r.rows.map(async t=>publicTournament(t,(await pool.query<EntryRow>('SELECT e.agent_id,e.state,a.near_account FROM entries e JOIN agents a ON a.id=e.agent_id WHERE tournament_id=$1 ORDER BY agent_id',[t.id])).rows)));}
+/** List view: only the last hand is needed, so the full history never leaves Postgres, and entries come from one query. */
+const LIST_COLUMNS=`id,creator,name,entry_yocto,starting_stack,capacity,duration_seconds,shares,state,seed_commitment,rules_hash,roster_hash,closes_at,started_at,ended_at,
+  hand_number,button,blind_level,stacks,ranking,winner_id,result_hash,replay_hash,payouts,created_at,
+  CASE WHEN jsonb_array_length(history)>0 THEN jsonb_build_array(history->-1) ELSE '[]'::jsonb END AS history`;
+export async function listTournaments(){
+  const rows=(await pool.query<TournamentRow>(`SELECT ${LIST_COLUMNS} FROM tournaments ORDER BY created_at DESC LIMIT 100`)).rows;
+  if(!rows.length)return[];
+  const entries=(await pool.query<{tournament_id:string;agent_id:string;state:string;near_account:string}>(
+    'SELECT e.tournament_id,e.agent_id,e.state,a.near_account FROM entries e JOIN agents a ON a.id=e.agent_id WHERE e.tournament_id=ANY($1::uuid[]) ORDER BY e.agent_id',[rows.map(t=>t.id)])).rows;
+  const byTournament=new Map<string,typeof entries>();
+  for(const e of entries){const list=byTournament.get(e.tournament_id);if(list)list.push(e);else byTournament.set(e.tournament_id,[e]);}
+  return rows.map(t=>publicTournament(t,byTournament.get(t.id)||[]));
+}
 export async function getTournament(id:string){
   const t=(await pool.query<TournamentRow>('SELECT * FROM tournaments WHERE id=$1',[id])).rows[0];if(!t)return null;
   const entries=(await pool.query<EntryRow>(`SELECT e.*,a.near_account,a.server_key_sealed,a.name,a.strategy,a.model,a.description FROM entries e JOIN agents a ON a.id=e.agent_id WHERE e.tournament_id=$1 ORDER BY a.created_at`,[id])).rows;
@@ -72,6 +84,10 @@ export async function createAgent(owner:string,ownerPublicKey:string,input:Recor
   if(!ownerPublicKey.startsWith('ed25519:'))throw new Error('Sign in with an ed25519 NEAR key to own an agent account');
   const owned=await pool.query<{n:string}>('SELECT count(*)::text AS n FROM agents WHERE owner=$1',[owner]);
   if(Number(owned.rows[0].n)>=5)throw new Error('Each creator can register up to five agents');
+  // Every new agent account is seeded with NEAR from the arena contract, and implicit-account sign-ins are free to mint,
+  // so cap arena-wide creation per hour as well as per owner.
+  const recent=await pool.query<{n:string}>(`SELECT count(*)::text AS n FROM agents WHERE created_at>now()-interval '1 hour'`);
+  if(Number(recent.rows[0].n)>=Number(process.env.AGENT_CREATE_HOURLY_CAP||30))throw new Error('Agent registration is at its hourly limit. Try again later.');
   const id=randomUUID(),account=`${slugFor(name)}.${contractId()}`;
   if(account.length>64)throw new Error('Agent name is too long for a NEAR sub-account');
   const key=newAgentKey(account);
@@ -85,8 +101,12 @@ export async function provisionAgent(id:string,owner:string,ownerPublicKey:strin
   const agent=await getAgent(id);if(!agent||agent.owner!==owner)throw new Error('Agent not found for this owner');
   if(agent.state==='active')return publicAgent(agent);
   if(await chainAgent(agent.near_account)){await pool.query(`UPDATE agents SET state='active' WHERE id=$1`,[id]);return publicAgent((await getAgent(id))!);}
+  // Contracts that report `operator_funds_agents` require the operator to attach the agent seed (so escrowed arena
+  // balances never pay for new accounts). Read fresh: agent creation is rare and must match the deployed code.
+  const config=await view<ChainConfig>('get_config');
+  const seed=config.operator_funds_agents?BigInt(config.agent_seed):0n;
   const result=await chainOp(`create-agent:${id}`,{kind:'create_agent',agentId:id,signer:'operator',method:'create_agent'},
-    ()=>operatorCall('create_agent',{name:agent.near_account.split('.')[0],owner,owner_public_key:ownerPublicKey,server_public_key:agent.server_public_key}));
+    ()=>operatorCall('create_agent',{name:agent.near_account.split('.')[0],owner,owner_public_key:ownerPublicKey,server_public_key:agent.server_public_key},seed));
   const registered=result.state==='confirmed'&&await chainAgent(agent.near_account);
   await pool.query(`UPDATE agents SET state=$2,create_tx=COALESCE($3,create_tx) WHERE id=$1`,[id,registered?'active':result.state==='pending'?'creating':'failed',result.txHash]);
   return publicAgent((await getAgent(id))!);
@@ -284,7 +304,13 @@ export async function teeReceipts(tournamentId:string){
     FROM tee_receipts r LEFT JOIN agents a ON a.id=r.agent_id WHERE r.tournament_id=$1 ORDER BY r.id DESC LIMIT 200`,[tournamentId]);
   return r.rows;
 }
-export async function replayHand(tournamentId:string,handNumber:number){const t=(await getTournament(tournamentId))?.row;return t?.history.find(h=>h.handNumber===handNumber)||null;}
+/** One recorded hand. Until settlement the per-hand deck seed is withheld: it would let anyone rebuild the deck and see folded hole cards. */
+export async function replayHand(tournamentId:string,handNumber:number){
+  if(!Number.isSafeInteger(handNumber)||handNumber<1)return null;
+  const r=(await pool.query<{state:string;hand:TournamentRow['history'][number]|null}>(`SELECT state,(SELECT h FROM jsonb_array_elements(history) h WHERE (h->>'handNumber')::int=$2 LIMIT 1) AS hand FROM tournaments WHERE id=$1`,[tournamentId,handNumber])).rows[0];
+  if(!r?.hand)return null;
+  return r.state==='settled'?r.hand:{...r.hand,seed:undefined};
+}
 
 export async function verifyMatch(tournamentId:string){
   const data=await getTournament(tournamentId);const t=data?.row;if(!t)return null;
@@ -304,19 +330,34 @@ export async function verifyMatch(tournamentId:string){
     trust:'Deck seeds mix the operator seed (committed onchain before entry) with the OutLayer VRF output when configured. The operator asserts the ranking. The NEAR contract enforces entrants, frozen shares, the seed reveal and exact payouts. Replay proves deterministic execution, not unbiased randomness.'};
 }
 
-export async function leaderboard(){
-  const agents=(await pool.query<AgentRow>(`SELECT * FROM agents WHERE state='active'`)).rows;
-  const tournaments=(await pool.query<TournamentRow>(`SELECT * FROM tournaments WHERE state='settled'`)).rows;
-  const entries=(await pool.query<{tournament_id:string;agent_id:string}>(`SELECT tournament_id,agent_id FROM entries WHERE state='entered'`)).rows;
-  const rows=agents.map(a=>{
-    const played=tournaments.filter(t=>entries.some(e=>e.tournament_id===t.id&&e.agent_id===a.id));
-    const fees=played.reduce((s,t)=>s+BigInt(t.entry_yocto),0n);
-    const winnings=played.reduce((s,t)=>s+(t.payouts||[]).filter(p=>p.agent===a.near_account).reduce((n,p)=>n+BigInt(p.amount),0n),0n);
-    const profit=winnings-fees,wins=played.filter(t=>t.winner_id===a.id).length;
-    const hands=played.reduce((s,t)=>s+t.history.filter(h=>h.players.some(p=>p.id===a.id)).length,0);
+type LeaderRow={id:string;name:string;strategy:string;model:string;nearAccount:string;tournaments:number;wins:number;hands:number;profitYocto:string;profitNear:string;winningsNear:string;feesNear:string;roi:number;winRate:number;reputation:number;rating:number;rank:number};
+let leaderCache:{at:number;value:Promise<LeaderRow[]>}|null=null;
+/** Ranked by net NEAR profit from settled tournaments. Aggregated in SQL (hand counts included) and cached briefly:
+ * every client polls it, and it only changes when a tournament settles. */
+export function leaderboard():Promise<LeaderRow[]>{
+  if(leaderCache&&Date.now()-leaderCache.at<5_000)return leaderCache.value;
+  const value=computeLeaderboard();leaderCache={at:Date.now(),value};value.catch(()=>{leaderCache=null;});return value;
+}
+async function computeLeaderboard():Promise<LeaderRow[]>{
+  const [agents,played,handCounts,finishes]=await Promise.all([
+    pool.query<{id:string;name:string;strategy:string;model:string;near_account:string}>(`SELECT id,name,strategy,model,near_account FROM agents WHERE state='active'`),
+    pool.query<{agent_id:string;entry_yocto:string;winner_id:string|null;payouts:{agent:string;amount:string}[]|null}>(
+      `SELECT e.agent_id,t.entry_yocto::text AS entry_yocto,t.winner_id,t.payouts FROM entries e JOIN tournaments t ON t.id=e.tournament_id WHERE e.state='entered' AND t.state='settled'`),
+    pool.query<{agent_id:string;hands:number}>(`SELECT p->>'id' AS agent_id,count(*)::int AS hands FROM tournaments t
+      CROSS JOIN LATERAL jsonb_array_elements(t.history) h CROSS JOIN LATERAL jsonb_array_elements(h->'players') p WHERE t.state='settled' GROUP BY 1`),
+    pool.query<{ranking:string[]}>(`SELECT ranking FROM tournaments WHERE state='settled' AND ranking IS NOT NULL ORDER BY ended_at,created_at`)]);
+  const ratings=eloRatings(finishes.rows.map(r=>r.ranking));
+  const byAgent=new Map<string,typeof played.rows>();
+  for(const row of played.rows){const list=byAgent.get(row.agent_id);if(list)list.push(row);else byAgent.set(row.agent_id,[row]);}
+  const hands=new Map(handCounts.rows.map(r=>[r.agent_id,r.hands]));
+  const rows=agents.rows.map(a=>{
+    const games=byAgent.get(a.id)||[];
+    const fees=games.reduce((s,t)=>s+BigInt(t.entry_yocto),0n);
+    const winnings=games.reduce((s,t)=>s+(t.payouts||[]).filter(p=>p.agent===a.near_account).reduce((n,p)=>n+BigInt(p.amount),0n),0n);
+    const profit=winnings-fees,wins=games.filter(t=>t.winner_id===a.id).length;
     const roi=fees>0n?Number(profit*10000n/fees)/100:0;
-    return{id:a.id,name:a.name,strategy:a.strategy,model:a.model,nearAccount:a.near_account,tournaments:played.length,wins,hands,profitYocto:profit.toString(),profitNear:(profit<0n?'-':'')+formatNear(profit<0n?-profit:profit),
-      winningsNear:formatNear(winnings),feesNear:formatNear(fees),roi,winRate:played.length?wins/played.length:0,reputation:Math.min(1000,wins*100+played.length*5+Math.max(0,Math.floor(roi)))};
+    return{id:a.id,name:a.name,strategy:a.strategy,model:a.model,nearAccount:a.near_account,tournaments:games.length,wins,hands:hands.get(a.id)||0,profitYocto:profit.toString(),profitNear:(profit<0n?'-':'')+formatNear(profit<0n?-profit:profit),
+      winningsNear:formatNear(winnings),feesNear:formatNear(fees),roi,winRate:games.length?wins/games.length:0,reputation:Math.min(1000,wins*100+games.length*5+Math.max(0,Math.floor(roi))),rating:ratings.get(a.id)??ELO_START};
   });
   rows.sort((a,b)=>BigInt(b.profitYocto)>BigInt(a.profitYocto)?1:BigInt(b.profitYocto)<BigInt(a.profitYocto)?-1:b.wins-a.wins);
   return rows.map((r,i)=>({rank:i+1,...r}));
@@ -325,7 +366,8 @@ export async function leaderboard(){
 export async function agentAnalytics(agentId:string){
   const agent=await getAgent(agentId);if(!agent)return null;
   const tournaments=(await pool.query<TournamentRow>(`SELECT t.* FROM tournaments t JOIN entries e ON e.tournament_id=t.id WHERE e.agent_id=$1 ORDER BY t.created_at`,[agentId])).rows;
-  const hands=tournaments.flatMap(t=>t.history.filter(h=>h.players.some(p=>p.id===agentId)));
+  const tagged=tournaments.flatMap(t=>t.history.filter(h=>h.players.some(p=>p.id===agentId)).map(h=>({h,tournamentId:t.id})));
+  const hands=tagged.map(x=>x.h);
   const decisions=hands.flatMap(h=>h.decisions.filter(d=>d.agentId===agentId));
   const count=(action:string)=>decisions.filter(d=>d.action===action).length;
   const voluntary=hands.filter(h=>h.decisions.some(d=>d.agentId===agentId&&d.stage==='preflop'&&['call','raise','all-in'].includes(d.action))).length;
@@ -333,7 +375,7 @@ export async function agentAnalytics(agentId:string){
   const showdowns=hands.filter(h=>h.players.filter(p=>!p.folded).length>1);
   const wonShowdowns=showdowns.filter(h=>h.winnerIds.includes(agentId)).length;
   const potsWon=hands.map(h=>h.payouts[agentId]||0);
-  const bankroll=hands.map(h=>({hand:h.handNumber,tournamentId:tournaments.find(t=>t.history.some(x=>x===h))?.id||null,stack:h.players.find(p=>p.id===agentId)?.stack||0}));
+  const bankroll=tagged.map(({h,tournamentId})=>({hand:h.handNumber,tournamentId,stack:h.players.find(p=>p.id===agentId)?.stack||0}));
   const finished=tournaments.filter(t=>t.state==='settled').map(t=>({tournamentId:t.id,name:t.name,finish:(t.ranking||[]).indexOf(agentId)+1,entrants:Object.keys(t.stacks).length}));
   return{agentId,hands:hands.length,decisions:decisions.length,vpip:hands.length?voluntary/hands.length:0,pfr:hands.length?preflopRaises/hands.length:0,
     aggression:count('call')?(count('raise')+count('all-in'))/count('call'):count('raise')+count('all-in'),

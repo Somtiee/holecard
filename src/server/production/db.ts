@@ -58,6 +58,13 @@ export async function migrate(){
       created_at timestamptz NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS tee_receipts_tournament_idx ON tee_receipts(tournament_id,hand_number);
+    CREATE TABLE IF NOT EXISTS sponsorships (
+      owner text PRIMARY KEY, agent text NOT NULL, tx_hash text, created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS agents_created_idx ON agents(created_at);
+    CREATE INDEX IF NOT EXISTS entries_agent_idx ON entries(agent_id);
+    CREATE INDEX IF NOT EXISTS chain_ops_tournament_idx ON chain_ops(tournament_id,created_at);
+    CREATE INDEX IF NOT EXISTS tournaments_state_idx ON tournaments(state,created_at);
   `);
 }
 

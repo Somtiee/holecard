@@ -3,7 +3,8 @@
 # Usage: scripts/deploy-testnet.sh <contract-account.testnet> <operator-account.testnet>
 # Both accounts must already exist and be in your near-cli keychain. Create free ones with:
 #   near account create-account sponsor-by-faucet-service <name>.testnet autogenerate-new-keypair save-to-legacy-keychain network-config testnet create
-# The contract pays 0.1 NEAR from its own balance to seed each new agent account.
+# The operator attaches 0.1 NEAR to each create_agent call to seed the new agent account (escrow never pays).
+# To upgrade an existing deployment without touching its state, use scripts/upgrade-testnet.sh.
 set -euo pipefail
 CONTRACT=${1:?contract account id}
 OPERATOR=${2:?operator account id}

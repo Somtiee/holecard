@@ -19,7 +19,7 @@ const yoctoNear=(v:string)=>{const b=BigInt(v);return`${b/10n**24n}.${(b%10n**24
 export function AgentNearPanel({agentId,owned,config,notify}:{agentId:string;owned:boolean;config:NearConfig|null;notify:(m:string)=>void}){
   const [wallet,setWallet]=useState<AgentWallet|null>(null),[amount,setAmount]=useState('1'),[busy,setBusy]=useState(false),[source,setSource]=useState('usdc-base'),[quote,setQuote]=useState<Quote|null>(null);
   const load=()=>void get<AgentWallet>(`/api/agents/${agentId}/wallet`).then(setWallet).catch(()=>{});
-  useEffect(()=>{load();const t=setInterval(load,8000);return()=>clearInterval(t);},[agentId]);
+  useEffect(()=>{load();const t=setInterval(()=>{if(!document.hidden)load();},8000);return()=>clearInterval(t);},[agentId]);
   const act=async(kind:'deposit'|'withdraw')=>{
     if(!config?.contractId||!wallet)return;setBusy(true);
     try{const via=await(kind==='deposit'?depositToAgent:withdrawFromAgent)(config.network,config.contractId,wallet.nearAccount,amount);notify(`${kind==='deposit'?'Deposit confirmed onchain':'Withdrawal sent to your wallet'}${via==='relayed'?' · gas paid by the arena relayer':''}.`);load();}
@@ -51,7 +51,7 @@ export function AgentNearPanel({agentId,owned,config,notify}:{agentId:string;own
 /** Per-tournament privacy evidence: one signed TEE receipt per model decision. */
 export function TeeReceiptsPanel({tournamentId,policy}:{tournamentId:string;policy:string|undefined}){
   const [rows,setRows]=useState<Receipt[]>([]);
-  useEffect(()=>{const load=()=>void get<Receipt[]>(`/api/tournaments/${tournamentId}/tee-receipts`).then(setRows).catch(()=>{});load();const t=setInterval(load,6000);return()=>clearInterval(t);},[tournamentId]);
+  useEffect(()=>{const load=()=>void get<Receipt[]>(`/api/tournaments/${tournamentId}/tee-receipts`).then(setRows).catch(()=>{});load();const t=setInterval(()=>{if(!document.hidden)load();},6000);return()=>clearInterval(t);},[tournamentId]);
   const verified=rows.filter(r=>r.verified).length;
   return <section className="content-panel tx-panel"><div className="panel-heading"><span>PRIVATE INFERENCE RECEIPTS</span><span>{policy==='fixture'?'FIXTURE POLICY (NO MODEL)':`${verified}/${rows.length} TEE-SIGNED`}</span></div>
     <p>Each decision prompt holds that agent's private hole cards. It is sent only to a NEAR AI Cloud model running in a TEE. The arena keeps the sha256 of the exact request and response, then checks the enclave's signature over them against the attested signing key. The prompt itself is not stored.</p>
@@ -65,7 +65,7 @@ export function RandomnessPanel({tournamentId}:{tournamentId:string}){
   const [r,setR]=useState<{status:string;output_hex:string|null;alpha:string|null}|null|undefined>(undefined);
   const [configured,setConfigured]=useState<boolean|null>(null);
   useEffect(()=>{void get<{contract:{randomness_source?:unknown}|null}>('/api/health').then(h=>setConfigured(Boolean(h.contract?.randomness_source))).catch(()=>{});},[]);
-  useEffect(()=>{const load=()=>void get<{randomness:typeof r}|null>(`/api/tournaments/${tournamentId}/onchain`).then(t=>setR(t?.randomness??null)).catch(()=>{});load();const i=setInterval(load,6000);return()=>clearInterval(i);},[tournamentId]);
+  useEffect(()=>{const load=()=>void get<{randomness:typeof r}|null>(`/api/tournaments/${tournamentId}/onchain`).then(t=>setR(t?.randomness??null)).catch(()=>{});load();const i=setInterval(()=>{if(!document.hidden)load();},6000);return()=>clearInterval(i);},[tournamentId]);
   return <section className="content-panel"><div className="panel-heading"><span>VERIFIABLE SHUFFLE</span><Dices size={17}/></div>
     {r?.status==='verified'?<><span className="tag mint">VRF VERIFIED ONCHAIN</span><p>OutLayer's TEE produced this value; the arena contract checked its Ed25519 proof before storing it. Every deck mixes it with the operator's pre-committed seed.</p><div className="address-line"><span>{short(r.output_hex,14)}</span></div><small>{r.alpha}</small></>
      :r?.status==='requested'?<p>Waiting for OutLayer to return verifiable randomness. Dealing starts once the contract verifies it.</p>

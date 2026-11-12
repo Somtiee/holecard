@@ -9,11 +9,10 @@
     "dev:api": "tsx watch src/server/production/index.ts",
     "build": "tsc -b && vite build",
     "test": "vitest run",
-    "test:contracts": "forge test --offline",
-    "arc:preflight": "node --import tsx scripts/arc-preflight.ts",
-    "arc:deploy:v2": "node --import tsx scripts/deploy-arc-v2.ts",
+    "test:contracts": "cd contracts/near && cargo test",
     "start": "node --import tsx src/server/production/index.ts",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "e2e:testnet": "node --import tsx scripts/e2e-testnet.ts"
   },
   "dependencies": {
     "@fast-auth-near/browser-sdk": "1.4.2",

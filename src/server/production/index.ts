@@ -9,6 +9,7 @@ import {clearSessionCookie,makeChallenge,requireOwner,revokeSession,sessionCooki
 import {agentAnalytics,agentWallet,chainTournament,createAgent,createTournament,decisionMode,getAgent,getTournament,launchTournament,leaderboard,listAgents,listTournaments,
   operationHistory,provisionAgent,replayHand,reserveSeat,submitEntry,teeReceipts,tickArena,verifyMatch} from './arena';
 import {publicAgent} from './types';
+import {PRACTICE_STRATEGIES,runPractice} from './practice';
 import {NEAR_EXPLORER,NEAR_NETWORK,NEAR_RPC_URL,contractId,nearConfigured,operatorCall,txUrl,view} from '../near';
 import {allowedModels,attestModel,nearAiConfigured} from '../nearai';
 import {FUNDING_SOURCES,fundingQuote} from '../intents';
@@ -16,6 +17,10 @@ import {agentMarketStatus,coachReport,pollAgentMarket} from '../agentMarket';
 import {FASTAUTH_CONTRACT,relayDelegate,relayFastAuthSign,sponsorAgent} from '../relayer';
 
 const app=express();app.disable('x-powered-by');app.use(express.json({limit:'32kb'}));
+// Behind a reverse proxy (Railway, Docker ingress) every request arrives from the proxy's address, so the per-IP rate
+// limits would be shared by all users. TRUST_PROXY = number of proxy hops; defaults to 1 on Railway, off elsewhere.
+const trustProxy=process.env.TRUST_PROXY??(process.env.RAILWAY_ENVIRONMENT?'1':'');
+if(trustProxy)app.set('trust proxy',/^\d+$/.test(trustProxy)?Number(trustProxy):trustProxy);
 const server=createServer(app),wss=new WebSocketServer({noServer:true});
 const PORT=Number(process.env.PORT||8787),HOST=process.env.HOST||'127.0.0.1';
 const origin=process.env.PUBLIC_ORIGIN||`http://${HOST}:${PORT}`;
@@ -23,7 +28,7 @@ const param=(value:string|string[])=>Array.isArray(value)?value[0]:value;
 function broadcast(event:string,data:unknown){const payload=JSON.stringify({event,data});for(const ws of wss.clients)if(ws.readyState===WebSocket.OPEN)ws.send(payload);}
 const secure=origin.startsWith('https://');
 const requestCounts=new Map<string,{count:number;until:number}>();
-const limited=new Set(['/api/auth/challenge','/api/intents/quote','/api/agent-market/preview','/api/relay/delegate','/api/relay/fastauth-sign']);
+const limited=new Set(['/api/auth/challenge','/api/intents/quote','/api/agent-market/preview','/api/relay/delegate','/api/relay/fastauth-sign','/api/practice']);
 app.use((req,res,next)=>{
   if(['POST','PUT','PATCH','DELETE'].includes(req.method)&&req.headers.origin!==origin){res.status(403).json({error:'Request origin does not match this arena.'});return;}
   if(limited.has(req.path)){
@@ -37,8 +42,15 @@ const handle=(fn:(req:express.Request,res:express.Response)=>Promise<void>):expr
 const safeContract=()=>{try{return contractId();}catch{return null;}};
 
 app.get('/api/ready',handle(async(_req,res)=>{await pool.query('SELECT 1');res.json({ok:true});}));
+// Every client polls /api/health; one contract read per 10 s is plenty.
+let contractConfigCache:{at:number;value:Promise<Record<string,unknown>>}|null=null;
+const contractConfig=()=>{
+  if(!contractConfigCache||Date.now()-contractConfigCache.at>10_000)
+    contractConfigCache={at:Date.now(),value:view<Record<string,unknown>>('get_config').catch(error=>({error:(error as Error).message}))};
+  return contractConfigCache.value;
+};
 app.get('/api/health',handle(async(_req,res)=>{
-  const config=nearConfigured()?await view<Record<string,unknown>>('get_config').catch(error=>({error:(error as Error).message})):null;
+  const config=nearConfigured()?await contractConfig():null;
   res.json({ok:true,network:NEAR_NETWORK,contractId:safeContract(),contract:config,nearConfigured:nearConfigured(),nearAiConfigured:nearAiConfigured(),decisionPolicy:decisionMode(),
     tournamentLaunchReady:nearConfigured()&&(decisionMode()==='fixture'||nearAiConfigured()),agentMarket:agentMarketStatus(),
     operatorTrust:'Poker results are operator asserted; the NEAR contract escrows entry fees, checks the seed reveal and pays the frozen shares.'});
@@ -79,6 +91,8 @@ app.post('/api/tournaments',requireOwner,handle(async(req,res)=>{const t=await c
 app.post('/api/tournaments/:id/reserve',requireOwner,handle(async(req,res)=>{const t=await reserveSeat(res.locals.owner,param(req.params.id),req.body?.agentId);broadcast('tournament.updated',t);res.status(201).json(t);}));
 app.post('/api/tournaments/:id/launch',requireOwner,handle(async(req,res)=>{res.status(202).json(await launchTournament(res.locals.owner,param(req.params.id)));}));
 app.post('/api/tournaments/:id/entries/:agentId/enter',requireOwner,handle(async(req,res)=>{res.status(202).json(await submitEntry(res.locals.owner,param(req.params.id),param(req.params.agentId)));}));
+app.get('/api/practice',(_req,res)=>res.json({strategies:PRACTICE_STRATEGIES}));
+app.post('/api/practice',handle(async(req,res)=>{res.json(await runPractice(req.body||{}));}));
 app.get('/api/leaderboard',handle(async(_req,res)=>{res.json(await leaderboard());}));
 
 server.on('upgrade',(request,socket,head)=>{if(new URL(request.url||'/',`http://${request.headers.host}`).pathname!=='/ws'){socket.destroy();return;}wss.handleUpgrade(request,socket,head,ws=>wss.emit('connection',ws,request));});

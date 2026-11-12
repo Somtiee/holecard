@@ -2,7 +2,7 @@
 //!
 //! One contract account holds:
 //! - an **agent registry**: every AI agent is a sub-account `<name>.<arena>` created by this
-//!   contract. The owner's wallet key is added as a full-access key; the arena server receives
+//!   contract and seeded with NEAR that the operator attaches (never taken from escrow). The owner's wallet key is added as a full-access key; the arena server receives
 //!   only a function-call key restricted to this contract and to `enter` / `withdraw`, with a
 //!   capped gas allowance. Function-call keys cannot attach deposits, so the server can never move
 //!   an agent's NEAR anywhere except into a tournament it was rostered for.
@@ -174,13 +174,16 @@ pub struct ArenaConfig {
     pub paused: bool,
     pub agent_count: u32,
     pub tournament_count: u32,
+    /// `create_agent` requires the operator to attach exactly `agent_seed`.
+    pub operator_funds_agents: bool,
 }
 
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
 pub struct Arena {
     operator: AccountId,
-    /// NEAR sent from the contract balance to each new agent account for storage and gas.
+    /// NEAR sent to each new agent account for storage and gas. The operator attaches it to
+    /// `create_agent`, so arena balances held in escrow never fund new accounts.
     agent_seed: NearToken,
     /// Upper bound the server's function-call key may spend on gas.
     agent_gas_allowance: NearToken,
@@ -212,7 +215,7 @@ fn to_hex(bytes: &[u8]) -> String {
 
 fn from_hex(value: &str) -> Option<Vec<u8>> {
     let value = value.strip_prefix("0x").unwrap_or(value);
-    if value.len() % 2 != 0 {
+    if !value.len().is_multiple_of(2) {
         return None;
     }
     (0..value.len())
@@ -269,7 +272,10 @@ impl Arena {
     // ---------- agents ----------
 
     /// Creates `<name>.<arena>` with the owner's full-access key and a restricted server key.
-    /// Operator-only so the server can check the owner's NEP-413 sign-in first.
+    /// Operator-only so the server can check the owner's NEP-413 sign-in first. The operator attaches
+    /// exactly `agent_seed`: the agent's owner fully controls the new account, so seeding it from the
+    /// contract balance would let anyone with free sign-ins drain the escrow that backs arena balances.
+    #[payable]
     pub fn create_agent(
         &mut self,
         name: String,
@@ -292,6 +298,7 @@ impl Arena {
             .unwrap_or_else(|_| env::panic_str("INVALID_AGENT_ACCOUNT"));
         require!(!self.agents.contains_key(&agent), "AGENT_EXISTS");
         require!(owner_public_key != server_public_key, "SERVER_KEY_MUST_DIFFER");
+        require!(env::attached_deposit() == self.agent_seed, "ATTACH_EXACT_AGENT_SEED");
         let allowance = Allowance::Limited(
             NonZeroU128::new(self.agent_gas_allowance.as_yoctonear()).expect("allowance > 0"),
         );
@@ -320,7 +327,9 @@ impl Arena {
         #[callback_result] created: Result<(), PromiseError>,
     ) -> bool {
         if created.is_err() {
+            // The failed batch refunds the seed to this contract; return the operator's money to it.
             env::log_str(&format!("agent account {agent} was not created"));
+            let _ = Promise::new(self.operator.clone()).transfer(self.agent_seed);
             return false;
         }
         self.agents.insert(
@@ -759,6 +768,7 @@ impl Arena {
             paused: self.paused,
             agent_count: self.agent_count,
             tournament_count: self.tournaments.len(),
+            operator_funds_agents: true,
         }
     }
 

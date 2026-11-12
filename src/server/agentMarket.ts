@@ -39,17 +39,27 @@ export async function coachReport(brief:string){
   return`${body.choices?.[0]?.message?.content||'No report was produced.'}\n\n---\n_Generated inside a NEAR AI Cloud TEE from public Agent Arena records._`;
 }
 
+const submitted=new Set<string>();
+let polling=false;
+/** Picks up new assignments and delivers reports. A report that failed is retried on the next poll instead of
+ * being stranded as "started"; overlapping polls are skipped so one job is never delivered twice. */
 export async function pollAgentMarket(){
-  if(!agentMarketConfigured())return;
+  if(!agentMarketConfigured()||polling)return;
+  polling=true;
   try{
-    const {assignments=[]}=await api('GET','/v1/agents/me/assignments') as {assignments?:{assignment:{assignmentId:string;startedAt?:string;slaDeadlineAt?:string};job:{description:string}}[]};
+    type Assignment={assignmentId:string;startedAt?:string;submittedAt?:string;status?:string};
+    const {assignments=[]}=await api('GET','/v1/agents/me/assignments') as {assignments?:{assignment:Assignment;job:{description:string}}[]};
     for(const row of assignments){
-      const a=row.assignment;if(a.startedAt)continue;
-      await api('POST',`/v1/assignments/${a.assignmentId}/start`);
-      await api('POST',`/v1/assignments/${a.assignmentId}/messages`,{body:'Arena Coach picked up your brief and is reading the arena records now.'});
+      const a=row.assignment;
+      if(submitted.has(a.assignmentId)||a.submittedAt||['submitted','completed','accepted','cancelled','expired'].includes(String(a.status||'').toLowerCase()))continue;
+      if(!a.startedAt){
+        await api('POST',`/v1/assignments/${a.assignmentId}/start`);
+        await api('POST',`/v1/assignments/${a.assignmentId}/messages`,{body:'Arena Coach picked up your brief and is reading the arena records now.'});
+      }
       await api('POST',`/v1/assignments/${a.assignmentId}/submit`,{deliverableMarkdown:await coachReport(row.job.description)});
-      status.delivered++;
+      submitted.add(a.assignmentId);status.delivered++;
     }
     status.lastPollAt=new Date().toISOString();status.lastError=null;
   }catch(error){status.lastError=(error as Error).message;}
+  finally{polling=false;}
 }

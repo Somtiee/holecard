@@ -17,7 +17,7 @@ To let an AI agent play for money, you have to answer three questions:
 | NEAR feature | What it does here | Where |
 | --- | --- | --- |
 | **Sub-accounts + function-call access keys** | Every agent is `<name>.<arena-contract>`, created by the contract. The owner's wallet key is a **full-access** key. The arena server receives a **function-call key** limited to `enter` and `withdraw` on the arena contract, with a 0.25 NEAR gas cap. NEAR rejects deposits from function-call keys, and `withdraw` always pays the owner. So the server can enter rostered tournaments and nothing else. | `contracts/near/src/lib.rs` `create_agent`; `src/server/near.ts` |
-| **Rust smart contract (near-sdk 5)** | Escrows entry fees as arena balances. Freezes the roster (contract-computed sha256 roster hash), prize shares and seed commitment. Checks the seed reveal, requires every ranked agent to be an entrant, pays to the exact yoctoNEAR, and refunds unfilled or expired matches in the same call. | `contracts/near/` (18 unit tests) |
+| **Rust smart contract (near-sdk 5)** | Escrows entry fees as arena balances. Freezes the roster (contract-computed sha256 roster hash), prize shares and seed commitment. Checks the seed reveal, requires every ranked agent to be an entrant, pays to the exact yoctoNEAR, and refunds unfilled or expired matches in the same call. New agent accounts are seeded with NEAR the operator attaches, never from escrowed balances. | `contracts/near/` (29 unit tests) |
 | **NEP-413 signed messages** | Sign-in. The server verifies the ed25519 signature over the NEP-413 payload and checks onchain that the key is a full-access key of the claimed account. | `src/server/production/auth.ts` |
 | **NEAR Connect wallets** | Sign-in, plus the owner's own `deposit` / `withdraw` transactions. On testnet the picker offers Meteor, Intear, Nightly, Ledger and NEAR CLI. | `src/ui/near.ts` |
 | **NEAR AI Cloud (private inference)** | Every poker decision is a chat completion on a TEE-hosted open model through `cloud-api.near.ai`. The arena stores only the sha256 of the exact request and response bytes. It then fetches the enclave's ECDSA signature over them and checks the signer against a fresh, nonce-bound attestation report (NVIDIA NRAS GPU evidence + signing keys). Prompts are never stored. | `src/server/nearai.ts`, "Private inference receipts" panel |
@@ -27,6 +27,17 @@ To let an AI agent play for money, you have to answer three questions:
 | **NEAR Auth (FastAuth)** | Players can sign in with email, Google or a passkey: no wallet, no seed phrase. The MPC network derives their ed25519 key; they approve our NEP-413 challenge; our relayer submits the MPC `sign` call; the server verifies the signature against the implicit account (hex of the key). | `src/ui/fastauth.ts`, `src/server/relayer.ts` |
 | **Meta-transactions (NEP-366) relayer** | Wallets that support delegate actions sign `deposit`/`withdraw` and the arena relayer pays the gas. The relayer only forwards calls from the signed-in account to the arena contract's `deposit`/`withdraw`. On testnet, new players can claim a one-time starter stake, so they never need to buy NEAR to play. | `src/server/relayer.ts` |
 | **Agent Market (market.near.ai)** | "Arena Coach" is a self-hosted Agent Market worker. Buyers hire it per job ("review agent NIGHTOWL"). It reads public arena records, writes the report on a NEAR AI Cloud TEE model and submits Markdown through the marketplace's held-payment flow. | `src/server/agentMarket.ts` |
+
+## Judge path · 60 seconds
+
+1. Open the arena and click **Play a free practice match** (or go to `/#/practice`). No wallet, no sign-in.
+2. Name an agent, pick a strategy (Aggressive, Conservative, Bluff Heavy…) and click **Deal me in**.
+3. Watch a 30-hand, four-seat sit-and-go against the house bots GRANITE, VIPER and MIRAGE. Every action comes with a plain-language reason, hole cards are revealed at the end of each hand, and you can pause, scrub hands or change speed.
+4. **Results** shows your finish, net chips, hands won and VPIP. **Make it real on NEAR** opens agent creation with the same name and strategy.
+
+Practice runs the same poker engine as real arenas with the built-in rules policy. It makes no model calls, writes nothing to the database and touches nothing onchain. Real arenas replace the rules with a NEAR AI Cloud TEE model and put the entry fees in the NEAR contract (full path below).
+
+The leaderboard ranks agents two ways: **NEAR profit** from contract payouts, or **skill rating**, an Elo score where every settled finish counts as a win or loss against each other entrant, so a 0.1 NEAR table counts as much as a 10 NEAR one.
 
 ## Try it (judges)
 
@@ -53,8 +64,8 @@ Requirements: Node.js 22+ (24 LTS recommended), Rust with `wasm32-unknown-unknow
 docker compose up -d            # Postgres on 127.0.0.1:5432
 cp .env.example .env
 npm ci
-cd contracts/near && cargo test && cd ../..   # 18 contract tests
-npm test                                       # 40 server/engine tests
+cd contracts/near && cargo test && cd ../..   # 29 contract tests
+npm test                                       # 49 server/engine tests
 ```
 
 Deploy the contract to testnet (free accounts from the faucet):
