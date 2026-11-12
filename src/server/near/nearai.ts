@@ -33,7 +33,12 @@ export async function nearAiDecision(
   const body = JSON.stringify({
     model: context.model,
     temperature: 0.2,
-    max_tokens: 800,
+    max_tokens: 300,
+    // Poker turns have a clock. NEAR AI's TEE models reason at length by default (Qwen 3.6 spends the whole
+    // budget thinking and returns no answer; GLM-5.3 takes ~25 s). Qwen honours enable_thinking=false,
+    // GLM honours reasoning_effort=low; both together answer in ~0.5-1.5 s.
+    chat_template_kwargs: { enable_thinking: false },
+    reasoning_effort: 'low',
     messages: [
       { role: 'system', content: SYSTEM },
       {
@@ -87,8 +92,8 @@ export async function nearAiDecision(
 
 type AttestationReport = {
   request_nonce?: string;
-  model_attestations?: { signing_address?: string; nvidia_payload?: unknown; intel_quote?: string }[];
-  gateway_attestation?: { signing_address?: string; intel_quote?: string };
+  model_attestations?: { signing_address?: string; nvidia_payload?: unknown; intel_quote?: string; request_nonce?: string }[];
+  gateway_attestation?: { signing_address?: string; intel_quote?: string; request_nonce?: string };
 };
 export type AttestationSummary = {
   model: string;
@@ -130,7 +135,13 @@ export async function attestModel(model: string, force = false): Promise<Attesta
   });
   if (!res.ok) throw new Error(`Attestation request failed with HTTP ${res.status}`);
   const report = (await res.json()) as AttestationReport;
-  const nonceEchoed = (report.request_nonce || '').toLowerCase() === nonce;
+  // The gateway echoes the nonce inside each enclave's attestation (model_attestations[].request_nonce),
+  // and older reports at the top level. Every model enclave must be bound to our fresh nonce.
+  const enclaves = report.model_attestations || [];
+  const nonceEchoed =
+    enclaves.length > 0
+      ? enclaves.every(a => (a.request_nonce || '').toLowerCase() === nonce)
+      : (report.request_nonce || '').toLowerCase() === nonce;
   if (!nonceEchoed) notes.push('Report did not echo our nonce.');
   const modelSigners = [
     ...new Set((report.model_attestations || []).map(a => a.signing_address).filter(Boolean) as string[]),

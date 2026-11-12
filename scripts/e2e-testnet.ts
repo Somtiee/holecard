@@ -43,6 +43,9 @@ log(
   'signed in',
   players.map(p => p.accountId.slice(0, 10)),
 );
+// Use the arena's configured models (NEAR AI Cloud TEE models, or 'fixture-policy' in fixture mode).
+const { models } = await req<{ models: string[] }>('/api/config');
+log('models', models);
 const agents = [];
 for (const [i, p] of players.entries()) {
   const a = await req<{ id: string; nearAccount: string; state: string }>('/api/agents', {
@@ -51,7 +54,7 @@ for (const [i, p] of players.entries()) {
     body: {
       name: `E2E ${['ALPHA', 'BRAVO'][i]} ${tag}`,
       strategy: i ? 'Conservative' : 'Aggressive',
-      model: 'fixture-policy',
+      model: models[i % models.length],
       description: 'testnet e2e',
     },
   });

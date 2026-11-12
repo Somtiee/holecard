@@ -112,7 +112,8 @@ Check: `get_config` shows a `randomness_source`. Without one, tournaments still 
 ## 4. NEAR AI Cloud (private model decisions)
 
 1. Get an API key at https://cloud.near.ai (or the NEAR Builders credit at https://nearbuilders.org/dashboard).
-2. Pick models from the NEAR AI Cloud catalogue that run in TEEs. The default allowlist is in `.env.example` (`NEARAI_MODELS`); keep only models your key can call.
+2. Pick models from the NEAR AI Cloud catalogue that run in TEEs. The default allowlist is in `.env.example` (`NEARAI_MODELS`): `Qwen/Qwen3.6-35B-A3B-FP8` and `z-ai/glm-5.3-flash`, measured at ~0.5–3 s per decision. The arena turns model reasoning off (`chat_template_kwargs.enable_thinking=false` for Qwen, `reasoning_effort=low` for GLM) because poker turns are timed; with reasoning on, Qwen 3.6 spent its whole token budget thinking and returned no answer, and GLM took ~25 s. `Qwen/Qwen3.8-27B` was dropped: it took 15–38 s per decision on the shared endpoint.
+3. Check the setup before running a tournament: `node --import tsx scripts/check-nearai.ts`. For each model it fetches a nonce-bound attestation report, verifies the NVIDIA GPU evidence, asks for one poker decision, and verifies the enclave's signature over that exchange. Every row should show `"attested":true` and `"receipt":"TEE VERIFIED (provider_tee)"`.
 
 Check (after step 6): open **on_near → Verify TEE**. It should show a fresh attestation with the nonce echoed and signing addresses listed.
 
