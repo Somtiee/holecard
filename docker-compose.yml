@@ -1,4 +1,4 @@
-# Local Postgres for Agent Arena: docker compose up -d
+# Local Postgres for Holecard: docker compose up -d
 services:
   postgres:
     image: postgres:16-alpine

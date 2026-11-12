@@ -1,4 +1,4 @@
-//! Agent Arena on NEAR.
+//! Holecard on NEAR.
 //!
 //! One contract account holds:
 //! - an **agent registry**: every AI agent is a sub-account `<name>.<arena>` created by this
@@ -22,12 +22,12 @@
 //! Poker itself runs offchain and is operator asserted. The contract enforces the money rules.
 
 use near_sdk::json_types::U128;
+use near_sdk::serde_json::json;
 use near_sdk::store::{IterableMap, LookupMap};
 use near_sdk::{
     env, near, require, AccountId, Allowance, BorshStorageKey, Gas, NearToken, PanicOnDefault,
     Promise, PromiseError, PublicKey,
 };
-use near_sdk::serde_json::json;
 use std::num::NonZeroU128;
 
 const MAX_SEATS: usize = 9;
@@ -230,12 +230,18 @@ pub fn vrf_seed(tournament_id: &str) -> String {
 }
 
 fn is_hash(value: &str) -> bool {
-    value.len() == 64 && value.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 /// Roster commitment anyone can recompute: sha256 of sorted `agent|config_hash` lines joined by '\n'.
 pub fn roster_hash(roster: &[RosterSeat]) -> String {
-    let mut lines: Vec<String> = roster.iter().map(|s| format!("{}|{}", s.agent, s.config_hash)).collect();
+    let mut lines: Vec<String> = roster
+        .iter()
+        .map(|s| format!("{}|{}", s.agent, s.config_hash))
+        .collect();
     lines.sort();
     sha256_hex(lines.join("\n").as_bytes())
 }
@@ -244,7 +250,10 @@ pub fn roster_hash(roster: &[RosterSeat]) -> String {
 impl Arena {
     #[init]
     pub fn new(operator: AccountId, agent_seed: U128, agent_gas_allowance: U128) -> Self {
-        require!(agent_seed.0 > 0 && agent_gas_allowance.0 > 0, "ZERO_AGENT_FUNDING");
+        require!(
+            agent_seed.0 > 0 && agent_gas_allowance.0 > 0,
+            "ZERO_AGENT_FUNDING"
+        );
         Self {
             operator,
             agent_seed: NearToken::from_yoctonear(agent_seed.0),
@@ -266,7 +275,9 @@ impl Arena {
     pub fn set_paused(&mut self, paused: bool) {
         self.assert_operator();
         self.paused = paused;
-        env::log_str(&format!("EVENT_JSON:{{\"event\":\"paused\",\"value\":{paused}}}"));
+        env::log_str(&format!(
+            "EVENT_JSON:{{\"event\":\"paused\",\"value\":{paused}}}"
+        ));
     }
 
     // ---------- agents ----------
@@ -288,7 +299,10 @@ impl Arena {
         require!(
             name.len() >= 2
                 && name.len() <= 32
-                && name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
+                && name.bytes().all(|b| b.is_ascii_lowercase()
+                    || b.is_ascii_digit()
+                    || b == b'-'
+                    || b == b'_')
                 && !name.starts_with(['-', '_'])
                 && !name.ends_with(['-', '_']),
             "INVALID_AGENT_NAME"
@@ -297,8 +311,14 @@ impl Arena {
             .parse()
             .unwrap_or_else(|_| env::panic_str("INVALID_AGENT_ACCOUNT"));
         require!(!self.agents.contains_key(&agent), "AGENT_EXISTS");
-        require!(owner_public_key != server_public_key, "SERVER_KEY_MUST_DIFFER");
-        require!(env::attached_deposit() == self.agent_seed, "ATTACH_EXACT_AGENT_SEED");
+        require!(
+            owner_public_key != server_public_key,
+            "SERVER_KEY_MUST_DIFFER"
+        );
+        require!(
+            env::attached_deposit() == self.agent_seed,
+            "ATTACH_EXACT_AGENT_SEED"
+        );
         let allowance = Allowance::Limited(
             NonZeroU128::new(self.agent_gas_allowance.as_yoctonear()).expect("allowance > 0"),
         );
@@ -369,8 +389,14 @@ impl Arena {
     pub fn withdraw(&mut self, agent: AccountId, amount: U128) -> Promise {
         let caller = env::predecessor_account_id();
         let mut record = self.agent(&agent);
-        require!(caller == record.owner || caller == agent, "NOT_OWNER_OR_AGENT");
-        require!(amount.0 > 0 && amount.0 <= record.balance.0, "INSUFFICIENT_BALANCE");
+        require!(
+            caller == record.owner || caller == agent,
+            "NOT_OWNER_OR_AGENT"
+        );
+        require!(
+            amount.0 > 0 && amount.0 <= record.balance.0,
+            "INSUFFICIENT_BALANCE"
+        );
         record.balance = U128(record.balance.0 - amount.0);
         let owner = record.owner.clone();
         self.agents.insert(agent.clone(), record);
@@ -398,26 +424,56 @@ impl Arena {
     ) -> Tournament {
         self.assert_operator();
         require!(!self.paused, "PAUSED");
-        require!(!id.is_empty() && id.len() <= 64 && self.tournaments.get(&id).is_none(), "DUPLICATE_ID");
-        require!(is_hash(&rules_hash) && is_hash(&seed_commitment), "INVALID_COMMITMENT");
-        require!(roster.len() >= 2 && roster.len() <= MAX_SEATS, "INVALID_SEATS");
+        require!(
+            !id.is_empty() && id.len() <= 64 && self.tournaments.get(&id).is_none(),
+            "DUPLICATE_ID"
+        );
+        require!(
+            is_hash(&rules_hash) && is_hash(&seed_commitment),
+            "INVALID_COMMITMENT"
+        );
+        require!(
+            roster.len() >= 2 && roster.len() <= MAX_SEATS,
+            "INVALID_SEATS"
+        );
         require!(entry_fee.0 > 0, "ZERO_FEE");
-        require!(registration_ms > 0 && registration_ms <= MAX_REGISTRATION_MS, "INVALID_REGISTRATION");
-        require!((MIN_DURATION_MS..=MAX_DURATION_MS).contains(&duration_ms), "INVALID_DURATION");
-        require!((MIN_GRACE_MS..=MAX_DURATION_MS).contains(&grace_ms), "INVALID_GRACE");
-        require!(!shares.is_empty() && shares.len() <= roster.len(), "INVALID_SHARES");
+        require!(
+            registration_ms > 0 && registration_ms <= MAX_REGISTRATION_MS,
+            "INVALID_REGISTRATION"
+        );
+        require!(
+            (MIN_DURATION_MS..=MAX_DURATION_MS).contains(&duration_ms),
+            "INVALID_DURATION"
+        );
+        require!(
+            (MIN_GRACE_MS..=MAX_DURATION_MS).contains(&grace_ms),
+            "INVALID_GRACE"
+        );
+        require!(
+            !shares.is_empty() && shares.len() <= roster.len(),
+            "INVALID_SHARES"
+        );
         require!(shares.iter().all(|s| *s > 0), "ZERO_SHARE");
-        require!(shares.iter().map(|s| *s as u32).sum::<u32>() == BPS_TOTAL, "SHARES_NOT_100_PERCENT");
+        require!(
+            shares.iter().map(|s| *s as u32).sum::<u32>() == BPS_TOTAL,
+            "SHARES_NOT_100_PERCENT"
+        );
         let minimum = shares.len().max(2) as u128;
         for share in &shares {
             // Every advertised place must be worth at least one yocto with the smallest playable field.
-            require!(entry_fee.0 * minimum * (*share as u128) >= BPS_TOTAL as u128, "DUST_PRIZE");
+            require!(
+                entry_fee.0 * minimum * (*share as u128) >= BPS_TOTAL as u128,
+                "DUST_PRIZE"
+            );
         }
         let mut owners: Vec<AccountId> = Vec::new();
         for (i, seat) in roster.iter().enumerate() {
             require!(is_hash(&seat.config_hash), "INVALID_CONFIG_HASH");
             let agent = self.agent(&seat.agent);
-            require!(!roster[..i].iter().any(|s| s.agent == seat.agent), "DUPLICATE_AGENT");
+            require!(
+                !roster[..i].iter().any(|s| s.agent == seat.agent),
+                "DUPLICATE_AGENT"
+            );
             require!(!owners.contains(&agent.owner), "DUPLICATE_OWNER");
             owners.push(agent.owner);
         }
@@ -457,10 +513,14 @@ impl Arena {
         let agent_id = env::predecessor_account_id();
         let mut t = self.tournament(&tournament_id);
         require!(
-            t.state == TournamentState::Registration && env::block_timestamp_ms() < t.registration_deadline_ms,
+            t.state == TournamentState::Registration
+                && env::block_timestamp_ms() < t.registration_deadline_ms,
             "REGISTRATION_CLOSED"
         );
-        require!(t.roster.iter().any(|s| s.agent == agent_id), "NOT_ON_ROSTER");
+        require!(
+            t.roster.iter().any(|s| s.agent == agent_id),
+            "NOT_ON_ROSTER"
+        );
         require!(!t.entered.contains(&agent_id), "ALREADY_ENTERED");
         let mut agent = self.agent(&agent_id);
         require!(agent.balance.0 >= t.entry_fee.0, "INSUFFICIENT_BALANCE");
@@ -485,7 +545,10 @@ impl Arena {
         require!(!self.paused, "PAUSED");
         let mut t = self.tournament(&tournament_id);
         require!(t.state == TournamentState::Registration, "CANNOT_START");
-        require!(env::block_timestamp_ms() >= t.registration_deadline_ms, "REGISTRATION_OPEN");
+        require!(
+            env::block_timestamp_ms() >= t.registration_deadline_ms,
+            "REGISTRATION_OPEN"
+        );
         require!(t.entered.len() >= t.shares.len().max(2), "TOO_FEW_PLAYERS");
         Self::start_internal(&mut t);
         self.tournaments.insert(tournament_id, t.clone());
@@ -500,7 +563,8 @@ impl Arena {
         let unfilled = t.state == TournamentState::Registration
             && now >= t.registration_deadline_ms
             && t.entered.len() < t.shares.len().max(2);
-        let expired = t.state == TournamentState::Running && now > t.started_at_ms + t.duration_ms + t.grace_ms;
+        let expired = t.state == TournamentState::Running
+            && now > t.started_at_ms + t.duration_ms + t.grace_ms;
         require!(unfilled || expired, "CANNOT_CANCEL");
         for agent_id in t.entered.clone() {
             let mut agent = self.agent(&agent_id);
@@ -510,7 +574,9 @@ impl Arena {
         t.prize_pool = U128(0);
         t.state = TournamentState::Cancelled;
         self.tournaments.insert(tournament_id.clone(), t.clone());
-        env::log_str(&format!("EVENT_JSON:{{\"event\":\"cancelled\",\"tournament\":\"{tournament_id}\"}}"));
+        env::log_str(&format!(
+            "EVENT_JSON:{{\"event\":\"cancelled\",\"tournament\":\"{tournament_id}\"}}"
+        ));
         t
     }
 
@@ -532,13 +598,19 @@ impl Arena {
                 && env::block_timestamp_ms() <= t.started_at_ms + t.duration_ms + t.grace_ms,
             "CANNOT_FINALIZE"
         );
-        require!(is_hash(&result_hash) && is_hash(&replay_hash), "INVALID_EVIDENCE");
+        require!(
+            is_hash(&result_hash) && is_hash(&replay_hash),
+            "INVALID_EVIDENCE"
+        );
         let seed = from_hex(&seed_reveal).unwrap_or_else(|| env::panic_str("INVALID_SEED"));
         require!(sha256_hex(&seed) == t.seed_commitment, "SEED_MISMATCH");
         require!(ranking.len() == t.shares.len(), "INVALID_RANKING");
         if self.randomness_source.is_some() {
             require!(
-                t.randomness.as_ref().map(|r| r.status == "verified").unwrap_or(false),
+                t.randomness
+                    .as_ref()
+                    .map(|r| r.status == "verified")
+                    .unwrap_or(false),
                 "RANDOMNESS_NOT_VERIFIED"
             );
         }
@@ -562,7 +634,10 @@ impl Arena {
                 agent.wins += 1;
             }
             self.agents.insert(agent_id.clone(), agent);
-            payouts.push(Payout { agent: agent_id.clone(), amount: U128(share) });
+            payouts.push(Payout {
+                agent: agent_id.clone(),
+                amount: U128(share),
+            });
             self.mint(agent_id, "podium", 1, None);
             if i == 0 {
                 self.mint(agent_id, "champion", 1, None);
@@ -570,8 +645,8 @@ impl Arena {
                 self.mt_metadata.insert(
                     trophy.clone(),
                     TokenMetadata {
-                        title: "Agent Arena champion".into(),
-                        description: format!("Won tournament {tournament_id} on Agent Arena; prize {share} yoctoNEAR."),
+                        title: "Holecard champion".into(),
+                        description: format!("Won tournament {tournament_id} on Holecard; prize {share} yoctoNEAR."),
                         tournament: Some(tournament_id.clone()),
                         owner: Some(agent_id.clone()),
                         issued_at_ms: env::block_timestamp_ms(),
@@ -588,7 +663,9 @@ impl Arena {
         t.payouts = payouts;
         t.state = TournamentState::Finalized;
         self.tournaments.insert(tournament_id.clone(), t.clone());
-        env::log_str(&format!("EVENT_JSON:{{\"event\":\"finalized\",\"tournament\":\"{tournament_id}\"}}"));
+        env::log_str(&format!(
+            "EVENT_JSON:{{\"event\":\"finalized\",\"tournament\":\"{tournament_id}\"}}"
+        ));
         t
     }
 
@@ -597,9 +674,17 @@ impl Arena {
     /// Only the contract account's own key may change the randomness source, not the operator,
     /// so the operator cannot swap in a VRF key it controls.
     pub fn set_randomness_source(&mut self, source: Option<RandomnessSource>) {
-        require!(env::predecessor_account_id() == env::current_account_id(), "NOT_CONTRACT_OWNER");
+        require!(
+            env::predecessor_account_id() == env::current_account_id(),
+            "NOT_CONTRACT_OWNER"
+        );
         if let Some(s) = &source {
-            require!(from_hex(&s.vrf_pubkey_hex).map(|k| k.len() == 32).unwrap_or(false), "INVALID_VRF_KEY");
+            require!(
+                from_hex(&s.vrf_pubkey_hex)
+                    .map(|k| k.len() == 32)
+                    .unwrap_or(false),
+                "INVALID_VRF_KEY"
+            );
             require!(!s.project_id.is_empty(), "INVALID_PROJECT");
         }
         self.randomness_source = source;
@@ -609,13 +694,24 @@ impl Arena {
     /// flight and a verified value is never replaced, so nobody can re-roll.
     #[payable]
     pub fn request_randomness(&mut self, tournament_id: String) -> Promise {
-        let source = self.randomness_source.clone().unwrap_or_else(|| env::panic_str("NO_RANDOMNESS_SOURCE"));
+        let source = self
+            .randomness_source
+            .clone()
+            .unwrap_or_else(|| env::panic_str("NO_RANDOMNESS_SOURCE"));
         let fee = env::attached_deposit();
-        require!(fee.as_yoctonear() >= MIN_VRF_FEE, "ATTACH_0.05_NEAR_FOR_OUTLAYER");
+        require!(
+            fee.as_yoctonear() >= MIN_VRF_FEE,
+            "ATTACH_0.05_NEAR_FOR_OUTLAYER"
+        );
         let mut t = self.tournament(&tournament_id);
         require!(t.state == TournamentState::Running, "NOT_RUNNING");
         require!(t.randomness.is_none(), "RANDOMNESS_ALREADY_REQUESTED");
-        t.randomness = Some(Randomness { status: "requested".into(), output_hex: None, alpha: None, signature_hex: None });
+        t.randomness = Some(Randomness {
+            status: "requested".into(),
+            output_hex: None,
+            alpha: None,
+            signature_hex: None,
+        });
         self.tournaments.insert(tournament_id.clone(), t);
         let args = json!({
             "source": {"Project": {"project_id": source.project_id}},
@@ -625,8 +721,17 @@ impl Arena {
             "payer_account_id": env::predecessor_account_id(),
         });
         Promise::new(source.outlayer)
-            .function_call("request_execution".to_string(), args.to_string().into_bytes(), fee, VRF_REQUEST_GAS)
-            .then(Self::ext(env::current_account_id()).with_static_gas(VRF_CALLBACK_GAS).on_randomness(tournament_id))
+            .function_call(
+                "request_execution".to_string(),
+                args.to_string().into_bytes(),
+                fee,
+                VRF_REQUEST_GAS,
+            )
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(VRF_CALLBACK_GAS)
+                    .on_randomness(tournament_id),
+            )
     }
 
     #[private]
@@ -640,7 +745,10 @@ impl Arena {
             .ok()
             .flatten()
             .and_then(|r| r.results.into_iter().next())
-            .and_then(|entry| self.verify_vrf(&tournament_id, &entry).map(|output| (entry, output)));
+            .and_then(|entry| {
+                self.verify_vrf(&tournament_id, &entry)
+                    .map(|output| (entry, output))
+            });
         match verified {
             Some((entry, output_hex)) => {
                 t.randomness = Some(Randomness {
@@ -694,18 +802,28 @@ impl Arena {
         self.mt_balances.insert(key, balance + amount);
         let supply = self.mt_supply.get(token_id).copied().unwrap_or(0);
         self.mt_supply.insert(token_id.to_string(), supply + amount);
-        let memo = memo.map(|m| format!(",\"memo\":\"{m}\"")).unwrap_or_default();
+        let memo = memo
+            .map(|m| format!(",\"memo\":\"{m}\""))
+            .unwrap_or_default();
         env::log_str(&format!(
             "EVENT_JSON:{{\"standard\":\"{MT_SPEC}\",\"version\":\"1.0.0\",\"event\":\"mt_mint\",\"data\":[{{\"owner_id\":\"{owner}\",\"token_ids\":[\"{token_id}\"],\"amounts\":[\"{amount}\"]{memo}}}]}}"
         ));
     }
 
     pub fn mt_balance_of(&self, account_id: AccountId, token_id: String) -> U128 {
-        U128(self.mt_balances.get(&format!("{account_id}|{token_id}")).copied().unwrap_or(0))
+        U128(
+            self.mt_balances
+                .get(&format!("{account_id}|{token_id}"))
+                .copied()
+                .unwrap_or(0),
+        )
     }
 
     pub fn mt_batch_balance_of(&self, account_id: AccountId, token_ids: Vec<String>) -> Vec<U128> {
-        token_ids.into_iter().map(|t| self.mt_balance_of(account_id.clone(), t)).collect()
+        token_ids
+            .into_iter()
+            .map(|t| self.mt_balance_of(account_id.clone(), t))
+            .collect()
     }
 
     pub fn mt_supply(&self, token_id: String) -> Option<U128> {
@@ -741,11 +859,26 @@ impl Arena {
         token_ids
             .into_iter()
             .map(|id| {
-                self.mt_metadata.get(&id).cloned().or_else(|| match id.as_str() {
-                    "champion" => Some(TokenMetadata { title: "Champion badge".into(), description: "One per tournament won.".into(), tournament: None, owner: None, issued_at_ms: 0 }),
-                    "podium" => Some(TokenMetadata { title: "Podium badge".into(), description: "One per paid finish.".into(), tournament: None, owner: None, issued_at_ms: 0 }),
-                    _ => None,
-                })
+                self.mt_metadata
+                    .get(&id)
+                    .cloned()
+                    .or_else(|| match id.as_str() {
+                        "champion" => Some(TokenMetadata {
+                            title: "Champion badge".into(),
+                            description: "One per tournament won.".into(),
+                            tournament: None,
+                            owner: None,
+                            issued_at_ms: 0,
+                        }),
+                        "podium" => Some(TokenMetadata {
+                            title: "Podium badge".into(),
+                            description: "One per paid finish.".into(),
+                            tournament: None,
+                            owner: None,
+                            issued_at_ms: 0,
+                        }),
+                        _ => None,
+                    })
             })
             .collect()
     }
@@ -802,15 +935,24 @@ impl Arena {
     }
 
     fn assert_operator(&self) {
-        require!(env::predecessor_account_id() == self.operator, "NOT_OPERATOR");
+        require!(
+            env::predecessor_account_id() == self.operator,
+            "NOT_OPERATOR"
+        );
     }
 
     fn agent(&self, id: &AccountId) -> Agent {
-        self.agents.get(id).cloned().unwrap_or_else(|| env::panic_str("UNKNOWN_AGENT"))
+        self.agents
+            .get(id)
+            .cloned()
+            .unwrap_or_else(|| env::panic_str("UNKNOWN_AGENT"))
     }
 
     fn tournament(&self, id: &String) -> Tournament {
-        self.tournaments.get(id).cloned().unwrap_or_else(|| env::panic_str("UNKNOWN_TOURNAMENT"))
+        self.tournaments
+            .get(id)
+            .cloned()
+            .unwrap_or_else(|| env::panic_str("UNKNOWN_TOURNAMENT"))
     }
 }
 

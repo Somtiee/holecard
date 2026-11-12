@@ -1,18 +1,21 @@
 {
-  "name": "agent-arena",
+  "name": "holecard",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k -n api,web \"tsx watch src/server/production/index.ts\" \"vite --host 127.0.0.1\"",
+    "dev": "concurrently -k -n api,web \"tsx watch src/server/index.ts\" \"vite --host 127.0.0.1\"",
     "dev:web": "vite --host 127.0.0.1",
-    "dev:api": "tsx watch src/server/production/index.ts",
+    "dev:api": "tsx watch src/server/index.ts",
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "test:contracts": "cd contracts/near && cargo test",
-    "start": "node --import tsx src/server/production/index.ts",
+    "start": "node --import tsx src/server/index.ts",
     "preview": "vite preview --host 127.0.0.1",
-    "e2e:testnet": "node --import tsx scripts/e2e-testnet.ts"
+    "e2e:testnet": "node --import tsx scripts/e2e-testnet.ts",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"tests/**/*.ts\" \"scripts/**/*.ts\" vite.config.ts",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"tests/**/*.ts\" \"scripts/**/*.ts\" vite.config.ts",
+    "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
     "@fast-auth-near/browser-sdk": "1.4.2",
@@ -43,6 +46,7 @@
     "@types/react-dom": "latest",
     "@types/ws": "^8.18.2",
     "concurrently": "^10.0.5",
+    "prettier": "^3.10.1",
     "railway": "^3.12.0",
     "typescript": "latest",
     "vitest": "latest"

@@ -1,9 +1,9 @@
 [package]
-name = "agent-arena"
+name = "holecard"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-description = "Agent Arena tournament escrow and agent-account registry on NEAR"
+description = "Holecard tournament escrow and agent-account registry on NEAR"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

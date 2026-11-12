@@ -41,7 +41,13 @@ fn setup(agents: &[(&str, &str)]) -> Arena {
 }
 
 fn roster(agents: &[&str]) -> Vec<RosterSeat> {
-    agents.iter().map(|a| RosterSeat { agent: acc(a), config_hash: hash(a) }).collect()
+    agents
+        .iter()
+        .map(|a| RosterSeat {
+            agent: acc(a),
+            config_hash: hash(a),
+        })
+        .collect()
 }
 
 fn create(arena: &mut Arena, agents: &[&str], shares: Vec<u16>) -> Tournament {
@@ -64,7 +70,11 @@ const B: &str = "bravo.arena.testnet";
 const C: &str = "charlie.arena.testnet";
 
 fn three() -> Arena {
-    setup(&[(A, "alice.testnet"), (B, "bob.testnet"), (C, "carol.testnet")])
+    setup(&[
+        (A, "alice.testnet"),
+        (B, "bob.testnet"),
+        (C, "carol.testnet"),
+    ])
 }
 
 #[test]
@@ -80,7 +90,13 @@ fn full_roster_starts_and_finalizes_with_exact_payouts() {
     assert_eq!(t.prize_pool.0, 3 * FEE);
 
     ctx("operator.testnet", 0, 5 * MIN);
-    let t = arena.finalize("t1".into(), hash("result"), hash("replay"), to_hex(&seed()), vec![acc(B), acc(A)]);
+    let t = arena.finalize(
+        "t1".into(),
+        hash("result"),
+        hash("replay"),
+        to_hex(&seed()),
+        vec![acc(B), acc(A)],
+    );
     assert_eq!(t.state, TournamentState::Finalized);
     let paid: u128 = t.payouts.iter().map(|p| p.amount.0).sum();
     assert_eq!(paid, 3 * FEE);
@@ -100,7 +116,13 @@ fn finalize_rejects_wrong_seed() {
         arena.enter("t1".into());
     }
     ctx("operator.testnet", 0, 5 * MIN);
-    arena.finalize("t1".into(), hash("r"), hash("p"), to_hex(&[1u8; 32]), vec![acc(A)]);
+    arena.finalize(
+        "t1".into(),
+        hash("r"),
+        hash("p"),
+        to_hex(&[1u8; 32]),
+        vec![acc(A)],
+    );
 }
 
 #[test]
@@ -115,7 +137,13 @@ fn finalize_rejects_non_entrant() {
     ctx("anyone.testnet", 0, 20 * MIN);
     arena.start("t1".into());
     ctx("operator.testnet", 0, 21 * MIN);
-    arena.finalize("t1".into(), hash("r"), hash("p"), to_hex(&seed()), vec![acc(C)]);
+    arena.finalize(
+        "t1".into(),
+        hash("r"),
+        hash("p"),
+        to_hex(&seed()),
+        vec![acc(C)],
+    );
 }
 
 #[test]
@@ -128,7 +156,13 @@ fn only_operator_finalizes() {
         arena.enter("t1".into());
     }
     ctx(A, 0, 5 * MIN);
-    arena.finalize("t1".into(), hash("r"), hash("p"), to_hex(&seed()), vec![acc(A)]);
+    arena.finalize(
+        "t1".into(),
+        hash("r"),
+        hash("p"),
+        to_hex(&seed()),
+        vec![acc(A)],
+    );
 }
 
 #[test]
@@ -145,7 +179,17 @@ fn off_roster_agent_cannot_enter() {
 fn unfunded_agent_cannot_enter() {
     let mut arena = setup(&[(A, "alice.testnet"), (B, "bob.testnet")]);
     ctx("operator.testnet", 0, 1_000);
-    arena.create_tournament("t1".into(), hash("rules"), sha256_hex(&seed()), U128(10 * FEE), roster(&[A, B]), vec![10000], 15 * MIN, 10 * MIN, 60 * MIN);
+    arena.create_tournament(
+        "t1".into(),
+        hash("rules"),
+        sha256_hex(&seed()),
+        U128(10 * FEE),
+        roster(&[A, B]),
+        vec![10000],
+        15 * MIN,
+        10 * MIN,
+        60 * MIN,
+    );
     ctx(A, 0, 2_000);
     arena.enter("t1".into());
 }
@@ -234,8 +278,12 @@ fn roster_hash_is_order_independent() {
 fn agent_names_are_validated() {
     let mut arena = three();
     ctx("operator.testnet", 0, 1_000);
-    let pk: PublicKey = "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp".parse().unwrap();
-    let pk2: PublicKey = "ed25519:DcA2MzgpJbrUATQLLceocVckhhAqrkingax4oJ9kZ847".parse().unwrap();
+    let pk: PublicKey = "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp"
+        .parse()
+        .unwrap();
+    let pk2: PublicKey = "ed25519:DcA2MzgpJbrUATQLLceocVckhhAqrkingax4oJ9kZ847"
+        .parse()
+        .unwrap();
     let _ = arena.create_agent("Bad.Name".into(), acc("alice.testnet"), pk, pk2);
 }
 
@@ -243,14 +291,24 @@ fn agent_names_are_validated() {
 fn create_agent_issues_restricted_server_key() {
     let mut arena = three();
     ctx("operator.testnet", NEAR / 10, 1_000);
-    let owner_pk: PublicKey = "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp".parse().unwrap();
-    let server_pk: PublicKey = "ed25519:DcA2MzgpJbrUATQLLceocVckhhAqrkingax4oJ9kZ847".parse().unwrap();
+    let owner_pk: PublicKey = "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp"
+        .parse()
+        .unwrap();
+    let server_pk: PublicKey = "ed25519:DcA2MzgpJbrUATQLLceocVckhhAqrkingax4oJ9kZ847"
+        .parse()
+        .unwrap();
     let _ = arena.create_agent("delta".into(), acc("dave.testnet"), owner_pk, server_pk);
     let receipts = near_sdk::test_utils::get_created_receipts();
-    let create = receipts.iter().find(|r| r.receiver_id == acc("delta.arena.testnet")).unwrap();
+    let create = receipts
+        .iter()
+        .find(|r| r.receiver_id == acc("delta.arena.testnet"))
+        .unwrap();
     let debug = format!("{:?}", create.actions);
     assert!(debug.contains("CreateAccount"));
-    assert!(debug.contains(r#"method_names: ["enter", "withdraw"]"#), "server key must be limited to enter/withdraw: {debug}");
+    assert!(
+        debug.contains(r#"method_names: ["enter", "withdraw"]"#),
+        "server key must be limited to enter/withdraw: {debug}"
+    );
     assert!(debug.contains("arena.testnet"));
 }
 
@@ -258,17 +316,29 @@ fn create_agent_issues_restricted_server_key() {
 fn roster_hash_matches_typescript() {
     // Same vector as tests/near.test.ts in the arena server.
     let roster = vec![
-        RosterSeat { agent: acc("bravo.arena.testnet"), config_hash: "b".repeat(64) },
-        RosterSeat { agent: acc("alpha.arena.testnet"), config_hash: "a".repeat(64) },
+        RosterSeat {
+            agent: acc("bravo.arena.testnet"),
+            config_hash: "b".repeat(64),
+        },
+        RosterSeat {
+            agent: acc("alpha.arena.testnet"),
+            config_hash: "a".repeat(64),
+        },
     ];
-    assert_eq!(roster_hash(&roster), "6f14f0fd6a316dcd9d482f5b1c58ede47aae619212a4a4aadfb28812af6bbf61");
+    assert_eq!(
+        roster_hash(&roster),
+        "6f14f0fd6a316dcd9d482f5b1c58ede47aae619212a4a4aadfb28812af6bbf61"
+    );
 }
 
 #[test]
 fn seed_reveal_uses_sha256_of_raw_bytes() {
     // The server commits sha256(32 random bytes) and reveals the bytes as hex.
     let seed = [0xabu8; 32];
-    assert_eq!(sha256_hex(&from_hex(&to_hex(&seed)).unwrap()), sha256_hex(&seed));
+    assert_eq!(
+        sha256_hex(&from_hex(&to_hex(&seed)).unwrap()),
+        sha256_hex(&seed)
+    );
 }
 
 // ---------- OutLayer VRF ----------
@@ -299,7 +369,11 @@ fn running(arena: &mut Arena) {
 fn vrf_response(alpha: &str, key: &SigningKey) -> VrfResponse {
     let sig = key.sign(alpha.as_bytes());
     VrfResponse {
-        results: vec![VrfEntry { value: near_sdk::serde_json::json!(null), signature_hex: to_hex(&sig.to_bytes()), alpha: alpha.into() }],
+        results: vec![VrfEntry {
+            value: near_sdk::serde_json::json!(null),
+            signature_hex: to_hex(&sig.to_bytes()),
+            alpha: alpha.into(),
+        }],
     }
 }
 
@@ -313,12 +387,22 @@ fn verified_vrf_is_stored_and_unlocks_finalize() {
     ctx("arena.testnet", 0, 3_100);
     let alpha = format!("vrf:42:arena.testnet:{}", vrf_seed("t1"));
     assert!(arena.on_randomness("t1".into(), Ok(Some(vrf_response(&alpha, &vrf_key())))));
-    let r = arena.get_tournament("t1".into()).unwrap().randomness.unwrap();
+    let r = arena
+        .get_tournament("t1".into())
+        .unwrap()
+        .randomness
+        .unwrap();
     assert_eq!(r.status, "verified");
     let sig = vrf_key().sign(alpha.as_bytes()).to_bytes();
     assert_eq!(r.output_hex.unwrap(), sha256_hex(&sig));
     ctx("operator.testnet", 0, 5 * MIN);
-    arena.finalize("t1".into(), hash("r"), hash("p"), to_hex(&seed()), vec![acc(A)]);
+    arena.finalize(
+        "t1".into(),
+        hash("r"),
+        hash("p"),
+        to_hex(&seed()),
+        vec![acc(A)],
+    );
 }
 
 #[test]
@@ -332,7 +416,11 @@ fn forged_or_misbound_vrf_is_rejected_and_retry_allowed() {
     let forger = SigningKey::from_bytes(&[1u8; 32]);
     let alpha = format!("vrf:42:arena.testnet:{}", vrf_seed("t1"));
     assert!(!arena.on_randomness("t1".into(), Ok(Some(vrf_response(&alpha, &forger)))));
-    assert!(arena.get_tournament("t1".into()).unwrap().randomness.is_none());
+    assert!(arena
+        .get_tournament("t1".into())
+        .unwrap()
+        .randomness
+        .is_none());
     // A genuine signature for another tournament's seed is rejected too.
     ctx("operator.testnet", MIN_VRF_FEE, 3_200);
     let _ = arena.request_randomness("t1".into());
@@ -363,7 +451,13 @@ fn finalize_requires_randomness_when_source_is_set() {
     with_vrf(&mut arena);
     running(&mut arena);
     ctx("operator.testnet", 0, 5 * MIN);
-    arena.finalize("t1".into(), hash("r"), hash("p"), to_hex(&seed()), vec![acc(A)]);
+    arena.finalize(
+        "t1".into(),
+        hash("r"),
+        hash("p"),
+        to_hex(&seed()),
+        vec![acc(A)],
+    );
 }
 
 #[test]
@@ -385,13 +479,25 @@ fn finalize_mints_soulbound_trophies() {
         arena.enter("t1".into());
     }
     ctx("operator.testnet", 0, 5 * MIN);
-    arena.finalize("t1".into(), hash("r"), hash("p"), to_hex(&seed()), vec![acc(B), acc(A)]);
+    arena.finalize(
+        "t1".into(),
+        hash("r"),
+        hash("p"),
+        to_hex(&seed()),
+        vec![acc(B), acc(A)],
+    );
     assert_eq!(arena.mt_balance_of(acc(B), "trophy:t1".into()).0, 1);
     assert_eq!(arena.mt_balance_of(acc(B), "champion".into()).0, 1);
     assert_eq!(arena.mt_balance_of(acc(A), "podium".into()).0, 1);
     assert_eq!(arena.mt_balance_of(acc(C), "podium".into()).0, 0);
     assert_eq!(arena.mt_supply("podium".into()).unwrap().0, 2);
-    assert_eq!(arena.mt_token(vec!["trophy:t1".into()])[0].as_ref().unwrap().owner_id, Some(acc(B)));
+    assert_eq!(
+        arena.mt_token(vec!["trophy:t1".into()])[0]
+            .as_ref()
+            .unwrap()
+            .owner_id,
+        Some(acc(B))
+    );
     assert_eq!(arena.mt_tokens_for_owner(acc(B)).len(), 3);
 }
 
@@ -405,8 +511,12 @@ fn trophies_cannot_be_transferred() {
 
 fn agent_keys() -> (PublicKey, PublicKey) {
     (
-        "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp".parse().unwrap(),
-        "ed25519:DcA2MzgpJbrUATQLLceocVckhhAqrkingax4oJ9kZ847".parse().unwrap(),
+        "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp"
+            .parse()
+            .unwrap(),
+        "ed25519:DcA2MzgpJbrUATQLLceocVckhhAqrkingax4oJ9kZ847"
+            .parse()
+            .unwrap(),
     )
 }
 
@@ -436,9 +546,15 @@ fn create_agent_forwards_exactly_the_attached_seed() {
     let (owner_pk, server_pk) = agent_keys();
     let _ = arena.create_agent("delta".into(), acc("dave.testnet"), owner_pk, server_pk);
     let receipts = near_sdk::test_utils::get_created_receipts();
-    let create = receipts.iter().find(|r| r.receiver_id == acc("delta.arena.testnet")).unwrap();
+    let create = receipts
+        .iter()
+        .find(|r| r.receiver_id == acc("delta.arena.testnet"))
+        .unwrap();
     let debug = format!("{:?}", create.actions);
-    assert!(debug.contains(&format!("deposit: NearToken {{ inner: {} }}", NEAR / 10)), "{debug}");
+    assert!(
+        debug.contains(&format!("deposit: NearToken {{ inner: {} }}", NEAR / 10)),
+        "{debug}"
+    );
     assert!(arena.get_config().operator_funds_agents);
 }
 
@@ -446,9 +562,15 @@ fn create_agent_forwards_exactly_the_attached_seed() {
 fn failed_agent_creation_refunds_the_operator() {
     let mut arena = three();
     ctx("arena.testnet", 0, 1_000);
-    assert!(!arena.on_agent_created(acc("delta.arena.testnet"), acc("dave.testnet"), Err(PromiseError::Failed)));
+    assert!(!arena.on_agent_created(
+        acc("delta.arena.testnet"),
+        acc("dave.testnet"),
+        Err(PromiseError::Failed)
+    ));
     assert!(arena.get_agent(acc("delta.arena.testnet")).is_none());
-    let refund = near_sdk::test_utils::get_created_receipts().into_iter().find(|r| r.receiver_id == acc("operator.testnet"));
+    let refund = near_sdk::test_utils::get_created_receipts()
+        .into_iter()
+        .find(|r| r.receiver_id == acc("operator.testnet"));
     let debug = format!("{:?}", refund.expect("refund to operator").actions);
     assert!(debug.contains(&format!("{}", NEAR / 10)), "{debug}");
 }

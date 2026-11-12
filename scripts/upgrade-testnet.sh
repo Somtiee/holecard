@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Upgrade the code of an already-deployed Agent Arena contract on NEAR testnet, keeping its state.
+# Upgrade the code of an already-deployed Holecard contract on NEAR testnet, keeping its state.
 # Usage: scripts/upgrade-testnet.sh <contract-account.testnet>
 # Signs with the contract account's own key from the near-cli legacy keychain. No init call is made,
 # so agents, arena balances, tournaments and trophies are untouched (the storage layout is unchanged).
@@ -8,7 +8,7 @@ CONTRACT=${1:?contract account id}
 cd "$(dirname "$0")/../contracts/near"
 cargo test --quiet
 cargo near build non-reproducible-wasm
-near contract deploy "$CONTRACT" use-file target/near/agent_arena.wasm without-init-call \
+near contract deploy "$CONTRACT" use-file target/near/holecard.wasm without-init-call \
   network-config testnet sign-with-legacy-keychain send
 CONFIG=$(near contract call-function as-read-only "$CONTRACT" get_config json-args '{}' network-config testnet now 2>&1)
 echo "$CONFIG"

@@ -1,3 +1,88 @@
-import {requestValidatedAction,type ModelProvider,type AgentContext} from '../src/services/providers';
-import {describe,it,expect} from 'vitest';import{calculateSidePots,compareHands,createDeck,createTable,executeAction,evaluateHand,legalActions,seededRandom,settleSidePots,showdown,validateAction}from'../src/engine/poker';
-describe('deterministic poker primitives',()=>{it('reproduces random stream and shuffled deck from the same seed',()=>{expect(seededRandom(42)()).toBe(seededRandom(42)());expect(createDeck(42)).toEqual(createDeck(42));expect(createDeck(42)).not.toEqual(createDeck(43));expect(new Set(createDeck(1)).size).toBe(52)});it('deals distinct hole cards from the committed deck',()=>{const table=createTable(['a','b','c'],42);const cards=table.players.flatMap(p=>p.holeCards);expect(new Set(cards).size).toBe(6);expect(table.deck).toHaveLength(46)});it('ranks poker hands and handles ace-low wheel',()=>{expect(evaluateHand(['As','Ks','Qs','Js','Ts']).slice(0,1)).toEqual([8]);expect(evaluateHand(['As','2d','3h','4c','5s'])).toEqual([4,5]);expect(compareHands(evaluateHand(['Ah','Ad','Ac','2s','2d']),evaluateHand(['Kh','Kd','Kc','Qs','Qd']))).toBeGreaterThan(0);expect(compareHands(evaluateHand(['Ah','Ad','2c','3s','4d']),evaluateHand(['Kh','Kd','3c','5s','7d']))).toBeGreaterThan(0)});it('chooses best 5-card hand from seven cards',()=>{expect(evaluateHand(['As','Ks','Qs','Js','Ts','2d','3c'])[0]).toBe(8)});it('provides only actions legal at the current bet and stack',()=>{const p={id:'x',name:'x',stack:100,contribution:0,folded:false,holeCards:[]};expect(legalActions(p,0).map(x=>x.action)).toEqual(['fold','check','raise','all-in']);expect(legalActions(p,40).map(x=>x.action)).toEqual(['fold','call','raise','all-in']);expect(()=>validateAction(p,0,{action:'call'})).toThrow(/Illegal/);expect(()=>validateAction(p,0,{action:'raise',amount:0})).toThrow(/range/)});it('executes valid actions without creating chips',()=>{const p={id:'x',name:'x',stack:100,contribution:0,folded:false,holeCards:[]};executeAction(p,20,{action:'call'});expect(p.stack+p.contribution).toBe(100);expect(p.contribution).toBe(20);executeAction(p,20,{action:'raise',amount:60});expect(p.stack+p.contribution).toBe(100);expect(p.contribution).toBe(60)});it('calculates main and side pots with folded contributions included but eligibility excluded',()=>{const pots=calculateSidePots([{id:'a',name:'a',stack:0,contribution:100,folded:false,holeCards:[]},{id:'b',name:'b',stack:0,contribution:60,folded:false,holeCards:[]},{id:'c',name:'c',stack:0,contribution:100,folded:true,holeCards:[]}]);expect(pots).toEqual([{amount:180,eligible:['a','b']},{amount:80,eligible:['a']}])});it('settles each side pot, handles ties, and preserves all contributed chips',()=>{const players=[{id:'a',name:'a',stack:0,contribution:100,folded:false,holeCards:['As','Ah']},{id:'b',name:'b',stack:0,contribution:60,folded:false,holeCards:['Ks','Kh']},{id:'c',name:'c',stack:0,contribution:100,folded:true,holeCards:['Qs','Qh']}];const result=settleSidePots(players,['2s','3d','4c','8h','9s']);expect(result).toEqual({a:260,b:0,c:0});expect(Object.values(result).reduce((x,y)=>x+y,0)).toBe(260)});it('falls back on timeout or illegal provider actions',async()=>{const player={id:'a',name:'a',stack:100,contribution:0,folded:false,holeCards:[]};const context:AgentContext={position:'BTN',holeCards:[],communityCards:[],pot:10,stack:100,opponents:[],legalActions:[{action:'check'},{action:'raise',min:1,max:100}]};const invalid:ModelProvider={id:'invalid',async decide(){return{action:'call'}}};const stalled:ModelProvider={id:'stalled',async decide(){return new Promise(()=>{})}};expect(await requestValidatedAction(invalid,player,0,context,30)).toEqual({action:'check'});expect(await requestValidatedAction(stalled,player,0,context,5)).toEqual({action:'check'})});it('returns the sole non-folded player as winner',()=>{const result=showdown([{id:'a',name:'a',stack:1,contribution:0,folded:false,holeCards:['As','Ah']},{id:'b',name:'b',stack:1,contribution:0,folded:true,holeCards:['Ks','Kh']}],[]);expect(result[0].playerId).toBe('a')})});
+import { describe, it, expect } from 'vitest';
+import {
+  calculateSidePots,
+  compareHands,
+  createDeck,
+  createTable,
+  executeAction,
+  evaluateHand,
+  legalActions,
+  seededRandom,
+  settleSidePots,
+  showdown,
+  validateAction,
+} from '../src/engine/poker';
+describe('deterministic poker primitives', () => {
+  it('reproduces random stream and shuffled deck from the same seed', () => {
+    expect(seededRandom(42)()).toBe(seededRandom(42)());
+    expect(createDeck(42)).toEqual(createDeck(42));
+    expect(createDeck(42)).not.toEqual(createDeck(43));
+    expect(new Set(createDeck(1)).size).toBe(52);
+  });
+  it('deals distinct hole cards from the committed deck', () => {
+    const table = createTable(['a', 'b', 'c'], 42);
+    const cards = table.players.flatMap(p => p.holeCards);
+    expect(new Set(cards).size).toBe(6);
+    expect(table.deck).toHaveLength(46);
+  });
+  it('ranks poker hands and handles ace-low wheel', () => {
+    expect(evaluateHand(['As', 'Ks', 'Qs', 'Js', 'Ts']).slice(0, 1)).toEqual([8]);
+    expect(evaluateHand(['As', '2d', '3h', '4c', '5s'])).toEqual([4, 5]);
+    expect(
+      compareHands(evaluateHand(['Ah', 'Ad', 'Ac', '2s', '2d']), evaluateHand(['Kh', 'Kd', 'Kc', 'Qs', 'Qd'])),
+    ).toBeGreaterThan(0);
+    expect(
+      compareHands(evaluateHand(['Ah', 'Ad', '2c', '3s', '4d']), evaluateHand(['Kh', 'Kd', '3c', '5s', '7d'])),
+    ).toBeGreaterThan(0);
+  });
+  it('chooses best 5-card hand from seven cards', () => {
+    expect(evaluateHand(['As', 'Ks', 'Qs', 'Js', 'Ts', '2d', '3c'])[0]).toBe(8);
+  });
+  it('provides only actions legal at the current bet and stack', () => {
+    const p = { id: 'x', name: 'x', stack: 100, contribution: 0, folded: false, holeCards: [] };
+    expect(legalActions(p, 0).map(x => x.action)).toEqual(['fold', 'check', 'raise', 'all-in']);
+    expect(legalActions(p, 40).map(x => x.action)).toEqual(['fold', 'call', 'raise', 'all-in']);
+    expect(() => validateAction(p, 0, { action: 'call' })).toThrow(/Illegal/);
+    expect(() => validateAction(p, 0, { action: 'raise', amount: 0 })).toThrow(/range/);
+  });
+  it('executes valid actions without creating chips', () => {
+    const p = { id: 'x', name: 'x', stack: 100, contribution: 0, folded: false, holeCards: [] };
+    executeAction(p, 20, { action: 'call' });
+    expect(p.stack + p.contribution).toBe(100);
+    expect(p.contribution).toBe(20);
+    executeAction(p, 20, { action: 'raise', amount: 60 });
+    expect(p.stack + p.contribution).toBe(100);
+    expect(p.contribution).toBe(60);
+  });
+  it('calculates main and side pots with folded contributions included but eligibility excluded', () => {
+    const pots = calculateSidePots([
+      { id: 'a', name: 'a', stack: 0, contribution: 100, folded: false, holeCards: [] },
+      { id: 'b', name: 'b', stack: 0, contribution: 60, folded: false, holeCards: [] },
+      { id: 'c', name: 'c', stack: 0, contribution: 100, folded: true, holeCards: [] },
+    ]);
+    expect(pots).toEqual([
+      { amount: 180, eligible: ['a', 'b'] },
+      { amount: 80, eligible: ['a'] },
+    ]);
+  });
+  it('settles each side pot, handles ties, and preserves all contributed chips', () => {
+    const players = [
+      { id: 'a', name: 'a', stack: 0, contribution: 100, folded: false, holeCards: ['As', 'Ah'] },
+      { id: 'b', name: 'b', stack: 0, contribution: 60, folded: false, holeCards: ['Ks', 'Kh'] },
+      { id: 'c', name: 'c', stack: 0, contribution: 100, folded: true, holeCards: ['Qs', 'Qh'] },
+    ];
+    const result = settleSidePots(players, ['2s', '3d', '4c', '8h', '9s']);
+    expect(result).toEqual({ a: 260, b: 0, c: 0 });
+    expect(Object.values(result).reduce((x, y) => x + y, 0)).toBe(260);
+  });
+  it('returns the sole non-folded player as winner', () => {
+    const result = showdown(
+      [
+        { id: 'a', name: 'a', stack: 1, contribution: 0, folded: false, holeCards: ['As', 'Ah'] },
+        { id: 'b', name: 'b', stack: 1, contribution: 0, folded: true, holeCards: ['Ks', 'Kh'] },
+      ],
+      [],
+    );
+    expect(result[0].playerId).toBe('a');
+  });
+});

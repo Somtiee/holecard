@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy the Agent Arena contract to NEAR testnet with near-cli-rs.
+# Deploy the Holecard contract to NEAR testnet with near-cli-rs.
 # Usage: scripts/deploy-testnet.sh <contract-account.testnet> <operator-account.testnet>
 # Both accounts must already exist and be in your near-cli keychain. Create free ones with:
 #   near account create-account sponsor-by-faucet-service <name>.testnet autogenerate-new-keypair save-to-legacy-keychain network-config testnet create
@@ -12,7 +12,7 @@ SEED_YOCTO=${AGENT_SEED_YOCTO:-100000000000000000000000}        # 0.1 NEAR per a
 ALLOWANCE_YOCTO=${AGENT_ALLOWANCE_YOCTO:-250000000000000000000000} # 0.25 NEAR gas cap for the server key
 cd "$(dirname "$0")/../contracts/near"
 cargo near build non-reproducible-wasm
-near contract deploy "$CONTRACT" use-file target/near/agent_arena.wasm \
+near contract deploy "$CONTRACT" use-file target/near/holecard.wasm \
   with-init-call new json-args "{\"operator\":\"$OPERATOR\",\"agent_seed\":\"$SEED_YOCTO\",\"agent_gas_allowance\":\"$ALLOWANCE_YOCTO\"}" \
   prepaid-gas '100.0 Tgas' attached-deposit '0 NEAR' \
   network-config testnet sign-with-legacy-keychain send
