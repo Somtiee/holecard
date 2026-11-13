@@ -155,6 +155,7 @@ export function InkMarks({ intro, onReady }: { intro: boolean; onReady: (on: boo
       a: new Float32Array(total),
       rel: new Float32Array(total),
       spd: new Float32Array(total),
+      loose: new Float32Array(total), // frames left with a soft spring after a tap
     };
     const glyphs: Glyph[] = [];
     let at = 0;
@@ -212,10 +213,10 @@ export function InkMarks({ intro, onReady }: { intro: boolean; onReady: (on: boo
     });
 
     const pointer = { x: -1e4, y: -1e4, vx: 0, vy: 0, lx: 0, ly: 0, on: false };
-    const onMove = (e: PointerEvent) => {
+    const aim = (clientX: number, clientY: number) => {
       const c = canvas.getBoundingClientRect();
-      const x = e.clientX - c.left,
-        y = e.clientY - c.top;
+      const x = clientX - c.left,
+        y = clientY - c.top;
       if (pointer.on) {
         pointer.vx = Math.max(-40, Math.min(40, x - pointer.lx));
         pointer.vy = Math.max(-40, Math.min(40, y - pointer.ly));
@@ -229,7 +230,28 @@ export function InkMarks({ intro, onReady }: { intro: boolean; onReady: (on: boo
       pointer.on = false;
       pointer.x = pointer.y = -1e4;
     };
+    const onMove = (e: PointerEvent) => aim(e.clientX, e.clientY);
+    // Phones: a finger dragged over the hero stirs the ink, and keeps stirring while the page scrolls
+    // (pointer events stop once the browser takes the gesture over for scrolling; touch events do not).
+    const onTouch = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (t) aim(t.clientX, t.clientY);
+    };
+    // A tap or click on the hero blows the grain outward from that spot; the spring brings it back.
+    let burst: { x: number; y: number } | null = null;
+    const onDown = (e: PointerEvent) => {
+      if ((e.target as Element | null)?.closest?.('a, button, input, select, textarea, [role="button"]')) return;
+      const c = canvas.getBoundingClientRect();
+      const x = e.clientX - c.left,
+        y = e.clientY - c.top;
+      if (x >= 0 && y >= 0 && x <= W && y <= H) burst = { x, y };
+    };
     addEventListener('pointermove', onMove, { passive: true });
+    addEventListener('pointerdown', onDown, { passive: true });
+    addEventListener('touchstart', onTouch, { passive: true });
+    addEventListener('touchmove', onTouch, { passive: true });
+    addEventListener('touchend', onLeave, { passive: true });
+    addEventListener('touchcancel', onLeave, { passive: true });
     document.addEventListener('pointerleave', onLeave);
 
     const flow = (x: number, y: number, t: number) =>
@@ -239,8 +261,23 @@ export function InkMarks({ intro, onReady }: { intro: boolean; onReady: (on: boo
       0.7;
 
     const R = small ? 60 : 85,
-      R2 = R * R;
+      R2 = R * R,
+      BR = small ? 110 : 170;
     const simulate = (t: number) => {
+      if (burst) {
+        const { x: bx, y: by } = burst;
+        burst = null;
+        for (let i = 0; i < total; i++) {
+          const dx = P.x[i] - bx,
+            dy = P.y[i] - by,
+            d = Math.sqrt(dx * dx + dy * dy);
+          if (d >= BR || d < 0.01) continue;
+          const f = (1 - d / BR) ** 1.2 * 6.5 * (0.7 + Math.random() * 0.6);
+          P.vx[i] += (dx / d) * f;
+          P.vy[i] += (dy / d) * f;
+          P.loose[i] = 30 + Math.random() * 20;
+        }
+      }
       for (const g of glyphs) {
         const { cx, cy, size } = anchor(g);
         const u = ((((t + g.t0) / g.period) % 1) + 1) % 1;
@@ -267,9 +304,14 @@ export function InkMarks({ intro, onReady }: { intro: boolean; onReady: (on: boo
             vy = vy * 0.88 + (hy - y) * pull;
             P.a[i] += (1 - P.a[i]) * 0.05;
           } else {
-            // Holding the shape: a stiff spring plus a little jitter, so the grain shimmers.
-            vx = vx * 0.8 + (hx - x) * 0.09 + (Math.random() - 0.5) * 0.16;
-            vy = vy * 0.8 + (hy - y) * 0.09 + (Math.random() - 0.5) * 0.16;
+            // Holding the shape: a stiff spring plus a little jitter, so the grain shimmers. Grain hit
+            // by a tap rides a soft spring for a moment, so the burst opens up before it heals.
+            const soft = P.loose[i] > 0,
+              k = soft ? 0.012 : 0.09,
+              damp = soft ? 0.93 : 0.8;
+            if (soft) P.loose[i]--;
+            vx = vx * damp + (hx - x) * k + (Math.random() - 0.5) * 0.16;
+            vy = vy * damp + (hy - y) * k + (Math.random() - 0.5) * 0.16;
             P.a[i] += (1 - P.a[i]) * 0.08;
           }
           const dx = x - pointer.x,
@@ -347,6 +389,11 @@ export function InkMarks({ intro, onReady }: { intro: boolean; onReady: (on: boo
       io.disconnect();
       ro.disconnect();
       removeEventListener('pointermove', onMove);
+      removeEventListener('pointerdown', onDown);
+      removeEventListener('touchstart', onTouch);
+      removeEventListener('touchmove', onTouch);
+      removeEventListener('touchend', onLeave);
+      removeEventListener('touchcancel', onLeave);
       document.removeEventListener('pointerleave', onLeave);
       onReady(false);
     };
