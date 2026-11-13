@@ -5,16 +5,14 @@ dist
 .env.*.local
 *.tsbuildinfo
 .DS_Store
-.railway/config.json
+.railway/
+Dockerfile
 contracts/near/target
 .claude/
 workers/*/target
 
-# demo video workspace: sources only, no builds or renders
-video/node_modules
-video/public
-video/review
-video/package-lock.json
+# demo video workspace (local only)
+video/
 
 # local environment and secrets (keep the documented template visible)
 .env*
