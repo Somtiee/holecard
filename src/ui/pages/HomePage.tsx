@@ -1,11 +1,21 @@
 import { ArrowRight } from 'lucide-react';
 import { ArenaCard } from '../components/ArenaCard';
-import { contractLive } from '../components/Brand';
+import { contractLive, Mark } from '../components/Brand';
 import { Leaderboard } from '../components/Leaderboard';
 import { ActionTicker, PokerTable } from '../components/PokerTable';
 import { Empty, SectionHead } from '../components/common';
 import { go } from '../lib/api';
 import { useArena } from '../lib/useArena';
+import { parallax, useCountUp, useIntro, useReveal } from '../lib/motion';
+
+function Count({ value, className }: { value: number; className?: string }) {
+  const { ref, shown } = useCountUp(value);
+  return (
+    <div ref={ref} className={className}>
+      {shown}
+    </div>
+  );
+}
 
 export function HomePage({
   arena,
@@ -26,19 +36,14 @@ export function HomePage({
     settled = arena.tournaments.filter(t => t.state === 'settled').length,
     running = arena.tournaments.filter(t => t.state === 'running').length,
     ok = contractLive(arena.health);
+  const phase = useIntro();
+  useReveal([arena.tournaments.length, arena.leaders.length, Boolean(live)]);
   return (
     <>
-      <header className="hero">
+      <header className={`hero ${phase}`} onPointerMove={parallax}>
         <div className="hero-art" aria-hidden="true">
           <div className="halo halo-a">
-            <svg className="halo-mark" viewBox="0 0 24 24">
-              <path
-                className="card"
-                fillRule="evenodd"
-                d="M7 2h7.5L19 6.5V20a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm1.8 11.6a3.2 3.2 0 1 0 6.4 0a3.2 3.2 0 1 0-6.4 0Z"
-              />
-              <path className="core" d="M14.5 2v3a1.5 1.5 0 0 0 1.5 1.5h3Z" />
-            </svg>
+            <Mark className="halo-mark" size={160} />
           </div>
           <div className="halo halo-b">
             <span className="halo-chip" />
@@ -47,26 +52,35 @@ export function HomePage({
         <div className="hero-content">
           <div className="wrap">
             <div className="hero-copy">
-              <p className="eyebrow">Holecard · AI agents play poker on NEAR {network}</p>
+              <p className="eyebrow">AI agent poker · NEAR {network}</p>
               <h1>
-                Nobody sees
-                <br />
-                their cards.
+                <span className="line">
+                  <span>Nobody sees</span>
+                </span>
+                <span className="line">
+                  <span>their cards.</span>
+                </span>
               </h1>
+              <div className="lockup" aria-label="Holecard on NEAR">
+                <Mark size={20} />
+                <span>Holecard</span>
+                <span className="x">×</span>
+                <span>NEAR AI · OutLayer</span>
+              </div>
             </div>
           </div>
         </div>
         <span className="scroll-hint">Scroll ↓</span>
       </header>
-      <section className="hero-sub">
+      <section className="hero-sub rise">
         <div className="wrap">
           <p className="hero-lead">
             Give an AI agent its own NEAR account, a strategy and a seat at the table. It plays poker for a NEAR prize
             pool and builds a public record.
           </p>
           <p className="hero-lead">
-            Underneath: private decisions inside NEAR AI Cloud TEEs, entry fees escrowed by a NEAR contract, and
-            verifiable shuffles checked onchain.
+            Underneath, every decision runs in a NEAR AI Cloud TEE, every shuffle is a VRF proof checked onchain, and no
+            prize is paid until an OutLayer TEE has replayed the whole match.
           </p>
           <div className="actions">
             <button className="btn" onClick={() => go('/practice')}>
@@ -80,12 +94,12 @@ export function HomePage({
             </button>
           </div>
           <p className="cta-practice">
-            No wallet, no sign-in: pick a strategy and play 30 hands against the house in seconds.
+            No wallet and no sign-in. Pick a strategy and play thirty hands against the house in seconds.
           </p>
         </div>
       </section>
       <section className="wrap">
-        <div className="strip-card">
+        <div className="strip-card reveal">
           <div className="strip-bar">
             <span className={`live ${ok ? '' : 'off'}`}>
               {ok ? 'Live' : 'Setup'} · NEAR {network}
@@ -95,18 +109,18 @@ export function HomePage({
           <div className="stats">
             <div className="stat">
               <div className="stat-k">Registered agents</div>
-              <div className="stat-v">{arena.agents.length}</div>
+              <Count className="stat-v" value={arena.agents.length} />
               <div className="stat-c">Each one its own NEAR account.</div>
             </div>
             <div className="stat">
-              <div className="stat-k">ArenasPage opened</div>
-              <div className="stat-v">{arena.tournaments.length}</div>
+              <div className="stat-k">Arenas opened</div>
+              <Count className="stat-v" value={arena.tournaments.length} />
               <div className="stat-c">{running} running right now.</div>
             </div>
             <div className="stat">
               <div className="stat-k">Settled onchain</div>
-              <div className="stat-v">{settled}</div>
-              <div className="stat-c">Payouts to the exact yoctoNEAR.</div>
+              <Count className="stat-v" value={settled} />
+              <div className="stat-c">Paid to the exact yoctoNEAR.</div>
             </div>
             <div className="stat">
               <div className="stat-k">Platform fee</div>
@@ -118,13 +132,13 @@ export function HomePage({
       </section>
       <section className="sec">
         <div className="wrap">
-          <div className="band table-band">
+          <div className="band table-band reveal">
             <div>
               <p className="eyebrow">On the felt</p>
               <h2>Watch agents think, live.</h2>
               <p className="lead">
-                Every seat is an autonomous agent deciding inside a TEE. Actions stream in as they happen; open any
-                decision to see the public context behind it.
+                Every seat is an autonomous agent deciding inside a TEE. Actions stream in as they happen, and each one
+                opens to show the public context behind it.
               </p>
               <div className="actions">
                 {live ? (
@@ -159,7 +173,7 @@ export function HomePage({
                     is yours to open.
                   </strong>
                   <small>
-                    No tournament is running right now. Play a free practice match against the house bots while you
+                    No tournament is running right now. Try a free practice match against the house agents while you
                     wait.
                   </small>
                   <button onClick={() => go('/practice')}>
@@ -172,7 +186,7 @@ export function HomePage({
           </div>
         </div>
       </section>
-      <section className="sec tight">
+      <section className="sec tight reveal">
         <div className="wrap">
           <SectionHead label="Live arenas" title="Find a seat. Follow the pot." link="View all arenas" href="/arenas" />
           {arena.tournaments.length ? (
@@ -183,14 +197,14 @@ export function HomePage({
             </div>
           ) : (
             <Empty
-              text="No arenas have opened yet. Be the first to put a strategy on the record."
+              text="No tournaments are open yet. Open one and let house agents fill the empty seats."
               action="Open an arena"
               onClick={onCreateTournament}
             />
           )}
         </div>
       </section>
-      <section className="sec tight">
+      <section className="sec tight reveal">
         <div className="wrap">
           <SectionHead label="The field" title="Agent rankings." link="Full leaderboard" href="/leaderboard" />
           <Leaderboard rows={arena.leaders.slice(0, 5)} />
@@ -198,7 +212,7 @@ export function HomePage({
       </section>
       <section className="sec">
         <div className="wrap">
-          <div className="sec-head">
+          <div className="sec-head reveal">
             <p className="eyebrow">How it works</p>
             <h2>Your agent. Your record.</h2>
             <p className="lead">
@@ -222,10 +236,10 @@ export function HomePage({
               [
                 '04',
                 'Verify',
-                'Replay every hand, check TEE receipts and the VRF shuffle, and read payouts from the contract.',
+                'An OutLayer TEE replays every hand before the contract pays. Anyone can re-run the same checks.',
               ],
-            ].map(([n, title, body]) => (
-              <div className="step" key={n}>
+            ].map(([n, title, body], i) => (
+              <div className="step reveal" key={n} style={{ '--i': i } as React.CSSProperties}>
                 <span className="step-n">{n}</span>
                 <h3>{title}</h3>
                 <p>{body}</p>
@@ -235,21 +249,23 @@ export function HomePage({
         </div>
       </section>
       <section className="wrap">
-        <div className="band">
+        <div className="band reveal">
           <p className="eyebrow">Built on the rails</p>
           <h2>Real agents. Real economics.</h2>
           <p className="lead">
             A NEAR contract holds entry fees and pays prizes. Each agent is a NEAR sub-account the server can only use
-            for arena entries. Model decisions run in NEAR AI Cloud TEEs. Poker stays offchain so play stays fast.
+            for arena entries. Decisions run in NEAR AI Cloud TEEs, and OutLayer supplies the shuffle and audits the
+            result. Poker itself runs offchain, so play stays fast.
           </p>
           <div className="flow">
             {[
-              ['NEAR', 'Escrow, rosters, payouts and agent accounts.', 'arena contract · nep-245'],
-              ['NEAR AI', 'Private, attested TEE inference per decision.', 'tee receipts · nonce-bound'],
-              ['Intents', 'Fund an entry from USDC, ETH, SOL or BTC.', '1click · dry quotes'],
-              ['Agent Market', 'Hire Arena Coach per job on market.near.ai.', 'held-payment flow'],
-            ].map(([b, s, c]) => (
-              <div className="fl" key={b}>
+              ['NEAR', 'Escrow, rosters, payouts, agent accounts and soulbound trophies.', 'arena contract · nep-245'],
+              ['NEAR AI', 'Private, attested TEE inference for every decision.', 'tee receipts · nonce-bound'],
+              ['OutLayer', 'VRF shuffles, and a TEE replay of each match before payout.', 'yield/resume · ed25519'],
+              ['Intents', 'Price an entry from USDC, ETH, SOL or BTC.', '1click · quotes'],
+              ['Agent Market', 'Arena Coach, an analyst agent hired per job.', 'held-payment flow'],
+            ].map(([b, s, c], i) => (
+              <div className="fl" key={b} style={{ '--i': i } as React.CSSProperties}>
                 <b>{b}</b>
                 <span>{s}</span>
                 <code>{c}</code>
@@ -257,19 +273,19 @@ export function HomePage({
             ))}
           </div>
           <p className="band-note">
-            Poker outcomes are asserted by the arena operator. Escrow, prize shares, seed commitments and payouts are
-            enforced by the NEAR contract.
+            The operator proposes each result, but cannot pay it. The contract releases prizes only when an OutLayer
+            TEE, given the committed seed, the VRF output and the recorded actions, reaches the same ranking.
           </p>
         </div>
       </section>
       <section className="sec">
         <div className="wrap">
-          <div className="cta">
+          <div className="cta reveal">
             <p className="eyebrow">Your move</p>
             <h2>Put a strategy on the record.</h2>
             <p className="lead">
-              Test a strategy for free at the practice table, then give it a NEAR account and a starter stake on
-              testnet. No wallet popups once it is funded.
+              Test a strategy for free at the practice table, then give it a NEAR account and a testnet starter stake.
+              Once it is funded, it plays without a single wallet popup.
             </p>
             <div className="actions">
               <button className="btn" onClick={() => go('/practice')}>

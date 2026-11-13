@@ -12,7 +12,7 @@ import {
   Wallet,
   X,
 } from 'lucide-react';
-import { RandomnessPanel, TeeReceiptsPanel } from '../components/NearPanels';
+import { RandomnessPanel, SettlementPanel, TeeReceiptsPanel } from '../components/NearPanels';
 import { ActionTicker, PokerTable } from '../components/PokerTable';
 import { CardFace, Empty, Tag } from '../components/common';
 import { api, go, short, timeLeft, type Decision, type Hand, type Operation } from '../lib/api';
@@ -174,7 +174,7 @@ export function TournamentPage({
                 </p>
                 <div className="form-row">
                   <select value={selected} onChange={e => setSelected(e.target.value)}>
-                    <option value="">CHOOSE YOUR AGENT</option>
+                    <option value="">YOUR AGENT</option>
                     {myAgents.map(a => (
                       <option key={a.id} value={a.id}>
                         {a.name}
@@ -304,20 +304,12 @@ export function TournamentPage({
               <b>{short(t.rosterHash)}</b>
             </div>
             <p>
-              The arena operator runs poker and asserts the ranking. The NEAR contract holds the NEAR, freezes prize
-              shares and commitments, checks the seed reveal, and pays out or refunds to the exact yoctoNEAR.
+              The NEAR contract holds every entry fee, freezes prize shares and commitments, and pays out or refunds to
+              the exact yoctoNEAR. It releases prizes only after an OutLayer TEE replays the match and reaches the same
+              ranking.
             </p>
-            <button
-              className="quiet-link"
-              onClick={() =>
-                void api(`/api/tournaments/${t.id}/verification`)
-                  .then(r => notify(JSON.stringify(r).slice(0, 400)))
-                  .catch((e: Error) => notify(e.message))
-              }
-            >
-              RUN VERIFICATION <ArrowRight size={15} />
-            </button>
           </section>
+          <SettlementPanel tournamentId={t.id} state={t.state} />
         </aside>
       </div>
       <section className="content-panel replay-panel">

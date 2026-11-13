@@ -4,7 +4,7 @@ import { NearConnector } from '@hot-labs/near-connect';
  * NEP-413 sign-in, `deposit` (fund an agent's arena balance) and `withdraw` (always pays the owner). */
 let connector: NearConnector | null = null;
 let connectorNetwork: 'testnet' | 'mainnet' | null = null;
-export function nearConnector(network: 'testnet' | 'mainnet') {
+function nearConnector(network: 'testnet' | 'mainnet') {
   if (!connector || connectorNetwork !== network) {
     connector = new NearConnector({
       network,

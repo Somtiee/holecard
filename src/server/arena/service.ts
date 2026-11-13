@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { ELO_START, eloRatings } from './rating';
 import { fixtureDecision, playHand, type DecisionContext, type HandDecision, type PublicTurn } from '../../engine/hand';
 import { replayMatches } from './verification';
+import { actionLog, rankEntrants } from '../../engine/ranking';
 import {
   accessKeys,
   accountBalance,
@@ -19,7 +20,18 @@ import {
 import { allowedModels, nearAiConfigured, nearAiDecision, verifyReceipt, type TeeReceipt } from '../near/nearai';
 import { pool, withTx } from '../db';
 import { ensureHouseAgents } from './house';
-import { configHash, handSeed, newSeed, resultCommitment, rosterHash, rulesHash, seedMatches } from './commitments';
+import {
+  configHash,
+  configJson,
+  handSeed,
+  newSeed,
+  resultCommitment,
+  rosterHash,
+  rulesHash,
+  rulesJson,
+  seedMatches,
+  sha256Hex,
+} from './commitments';
 import { publicAgent, publicTournament, type AgentRow, type EntryRow, type TournamentRow } from '../types';
 
 type ChainAgent = {
@@ -60,7 +72,7 @@ type ChainConfig = {
   operator_funds_agents?: boolean;
 };
 let configCache: { at: number; value: ChainConfig } | null = null;
-export async function chainConfig() {
+async function chainConfig() {
   if (!configCache || Date.now() - configCache.at > 60_000)
     configCache = { at: Date.now(), value: await view<ChainConfig>('get_config') };
   return configCache.value;
@@ -81,7 +93,7 @@ async function deckEntropy(t: TournamentRow, chain?: ChainTournament | null): Pr
     ).catch(error => console.error('VRF request failed', (error as Error).message));
   return null;
 }
-export const chainAgent = (account: string) => view<ChainAgent | null>('get_agent', { agent: account });
+const chainAgent = (account: string) => view<ChainAgent | null>('get_agent', { agent: account });
 export const chainTournament = (id: string) => view<ChainTournament | null>('get_tournament', { id });
 
 /** Idempotent transaction journal. The contract is the source of truth; callers check chain state first. */
@@ -514,30 +526,102 @@ async function markRunning(t: TournamentRow, chain: ChainTournament) {
   );
 }
 
+type SettlementVerifier = { outlayer: string; project_id: string };
+export type SettlementStatus = { verified: boolean; in_flight: boolean; last_rejection: string | null };
+let verifierCache: { at: number; value: SettlementVerifier | null } | null = null,
+  verifierLoading: Promise<SettlementVerifier | null> | null = null;
+/** The OutLayer replay project the contract requires before paying, or null (older contract or unset).
+ * Served stale-while-revalidate; settlement itself re-reads it at most a minute late. */
+export async function settlementVerifier() {
+  if ((!verifierCache || Date.now() - verifierCache.at > 60_000) && !verifierLoading)
+    verifierLoading = view<SettlementVerifier | null>('get_settlement_verifier')
+      .catch(() => verifierCache?.value ?? null)
+      .then(value => {
+        verifierCache = { at: Date.now(), value };
+        verifierLoading = null;
+        return value;
+      });
+  return verifierCache ? verifierCache.value : verifierLoading!;
+}
+const settlementStatus = (id: string) =>
+  view<SettlementStatus>('get_settlement_status', { tournament_id: id }).catch(() => null);
+
 async function finalize(t: TournamentRow) {
   const ranking =
-    t.ranking ||
-    Object.entries(t.stacks)
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      .map(x => x[0]);
-  const accounts = new Map(
-    (
-      await pool.query<{ agent_id: string; near_account: string }>(
-        `SELECT e.agent_id,a.near_account FROM entries e JOIN agents a ON a.id=e.agent_id WHERE e.tournament_id=$1 AND e.state='entered'`,
-        [t.id],
-      )
-    ).rows.map(r => [r.agent_id, r.near_account]),
-  );
+    t.ranking || rankEntrants(Object.fromEntries(Object.keys(t.stacks).map(id => [id, t.starting_stack])), t.history);
+  const entrants = (
+    await pool.query<AgentRow>(
+      `SELECT a.* FROM entries e JOIN agents a ON a.id=e.agent_id WHERE e.tournament_id=$1 AND e.state='entered'`,
+      [t.id],
+    )
+  ).rows;
+  const accounts = new Map(entrants.map(a => [a.id, a.near_account]));
   const ranked = ranking.map(id => accounts.get(id)).filter(Boolean) as string[];
   if (ranked.length < t.shares.length) throw new Error('Ranking has fewer paid entrants than prize places');
+  const verifier = await settlementVerifier();
+  const hands = actionLog(t.history);
   const result = t.result_hash || resultCommitment({ tournamentId: t.id, ranking, stacks: t.stacks });
-  const replay = t.replay_hash || resultCommitment({ tournamentId: t.id, history: t.history });
+  // With OutLayer settlement the contract itself hashes the action log into replay_hash.
+  const replay = verifier
+    ? sha256Hex(hands.join('\n'))
+    : t.replay_hash || resultCommitment({ tournamentId: t.id, history: t.history });
   await pool.query(
     `UPDATE tournaments SET state='finalizing',ranking=$2::jsonb,winner_id=$3,result_hash=$4,replay_hash=$5,ended_at=COALESCE(ended_at,now()) WHERE id=$1 AND state IN ('running','finalizing')`,
     [t.id, JSON.stringify(ranking), ranking[0], result, replay],
   );
   const chain = await chainTournament(t.id);
-  if (chain?.state !== 'Finalized')
+  if (chain?.state === 'Running' && verifier) {
+    const status = await settlementStatus(t.id);
+    const attempts = Number(
+      (
+        await pool.query<{ n: string }>(`SELECT count(*) AS n FROM chain_ops WHERE operation_key LIKE $1`, [
+          `finalize-verified:${t.id}:%`,
+        ])
+      ).rows[0].n,
+    );
+    // Retry only transient OutLayer failures; a replay that disagrees is left for review (or refund after grace).
+    const retryable = !status?.last_rejection || status.last_rejection === 'OUTLAYER_NO_RESULT';
+    if (!status?.in_flight && retryable && attempts < 3) {
+      const rules = rulesJson({
+        id: t.id,
+        entryYocto: t.entry_yocto,
+        startingStack: t.starting_stack,
+        capacity: t.capacity,
+        durationSeconds: t.duration_seconds,
+        shares: t.shares,
+      });
+      if (sha256Hex(rules) !== t.rules_hash) throw new Error('Rules preimage does not match the onchain rules hash');
+      await chainOp(
+        `finalize-verified:${t.id}:${attempts}`,
+        { kind: 'finalize', tournamentId: t.id, signer: 'operator', method: 'finalize_verified' },
+        () =>
+          operatorCall(
+            'finalize_verified',
+            {
+              tournament_id: t.id,
+              result_hash: result,
+              seed_reveal: t.seed_secret,
+              ranking: ranked.slice(0, t.shares.length),
+              rules,
+              configs: entrants.map(a =>
+                configJson({
+                  id: a.id,
+                  owner: a.owner,
+                  nearAccount: a.near_account,
+                  name: a.name,
+                  strategy: a.strategy,
+                  model: a.model,
+                  description: a.description,
+                }),
+              ),
+              hands,
+            },
+            VRF_FEE,
+            VRF_GAS,
+          ),
+      );
+    }
+  } else if (chain?.state !== 'Finalized')
     await chainOp(
       `finalize:${t.id}`,
       { kind: 'finalize', tournamentId: t.id, signer: 'operator', method: 'finalize' },
@@ -655,7 +739,7 @@ async function runHand(
 }
 
 /** Checks a few pending TEE signatures per tick (signatures can lag the completion slightly). */
-export async function verifyPendingReceipts() {
+async function verifyPendingReceipts() {
   if (!nearAiConfigured()) return;
   const rows = (
     await pool.query<{ id: string; model: string; chat_id: string; request_hash: string; response_hash: string }>(
@@ -754,7 +838,14 @@ export async function operationHistory(tournamentId: string) {
     `SELECT kind,agent_id,signer,method,state,tx_hash,error,created_at FROM chain_ops WHERE tournament_id=$1 ORDER BY created_at`,
     [tournamentId],
   );
-  return r.rows.map(o => ({ ...o, explorer: o.tx_hash ? txUrl(o.tx_hash) : null }));
+  // A failed attempt that a later retry of the same operation confirmed is noise, not history.
+  const superseded = (o: (typeof r.rows)[number], i: number) =>
+    o.state === 'failed' &&
+    r.rows.some(
+      (x, j) =>
+        j > i && x.state === 'confirmed' && x.kind === o.kind && x.method === o.method && x.agent_id === o.agent_id,
+    );
+  return r.rows.filter((o, i) => !superseded(o, i)).map(o => ({ ...o, explorer: o.tx_hash ? txUrl(o.tx_hash) : null }));
 }
 /** Each model's own explanation of its moves, released only once the tournament has settled onchain. */
 export async function decisionNotes(tournamentId: string) {
@@ -820,6 +911,7 @@ export async function verifyMatch(tournamentId: string) {
   const roster = data.entries.length
     ? rosterHash(data.entries.map(e => ({ agent: e.near_account, config_hash: e.config_hash })))
     : null;
+  const [verifier, settlement] = await Promise.all([settlementVerifier(), settlementStatus(t.id)]);
   return {
     tournamentId: t.id,
     contractId: contractId(),
@@ -844,8 +936,15 @@ export async function verifyMatch(tournamentId: string) {
     replayHash: t.replay_hash,
     decisionPolicy: decisionMode(),
     teeReceipts: { total: Number(receipts.total), verified: Number(receipts.verified) },
-    trust:
-      'Deck seeds mix the operator seed (committed onchain before entry) with the OutLayer VRF output when configured. The operator asserts the ranking. The NEAR contract enforces entrants, frozen shares, the seed reveal and exact payouts. Replay proves deterministic execution, not unbiased randomness.',
+    settlement: {
+      verifierProject: verifier?.project_id ?? null,
+      verifiedByOutLayer: Boolean(settlement?.verified),
+      inFlight: Boolean(settlement?.in_flight),
+      lastRejection: settlement?.last_rejection ?? null,
+    },
+    trust: settlement?.verified
+      ? 'Deck seeds mix the operator seed (committed onchain before entry) with the OutLayer VRF output. Before paying, the contract had an OutLayer TEE replay every hand from that seed and the recorded actions; the payout ranking is the replayed one. Each model decision carries a NEAR AI Cloud TEE signature.'
+      : 'Deck seeds mix the operator seed (committed onchain before entry) with the OutLayer VRF output when configured. This match settled on the operator-asserted ranking; the NEAR contract enforced entrants, frozen shares, the seed reveal and exact payouts.',
   };
 }
 

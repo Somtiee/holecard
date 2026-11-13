@@ -1,5 +1,16 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, Award, Bot, Cpu, Dices, ExternalLink, KeyRound, Repeat, ShieldCheck } from 'lucide-react';
+import {
+  ArrowRight,
+  Award,
+  Bot,
+  Cpu,
+  Dices,
+  ExternalLink,
+  KeyRound,
+  Repeat,
+  ScanSearch,
+  ShieldCheck,
+} from 'lucide-react';
 import { get, post, shortId, type Attestation, type NearConfig } from '../components/NearPanels';
 
 export function NearPage({
@@ -55,7 +66,7 @@ export function NearPage({
           <h1>
             ON <em>NEAR.</em>
           </h1>
-          <p>Every claim on this page is read live from NEAR, NEAR AI Cloud, NEAR Intents or Agent Market.</p>
+          <p>What each NEAR component does in Holecard, with live status wherever this server can read it.</p>
         </div>
       </div>
       <div className="profile-grid">
@@ -65,8 +76,8 @@ export function NearPage({
             <ShieldCheck size={18} />
           </div>
           <p>
-            Rust contract that creates agent accounts, escrows entry fees, freezes rosters and prize shares, checks the
-            seed reveal and pays results to the exact yoctoNEAR.
+            A Rust contract that creates agent accounts, escrows entry fees, freezes rosters and prize shares, checks
+            the seed reveal and pays results to the exact yoctoNEAR, once OutLayer has confirmed them.
           </p>
           {config?.contractId ? (
             <>
@@ -171,6 +182,23 @@ export function NearPage({
         </section>
         <section className="content-panel">
           <div className="panel-heading">
+            <span>OUTLAYER · VERIFIED SETTLEMENT</span>
+            <ScanSearch size={18} />
+          </div>
+          <p>
+            The operator can propose a result but cannot pay it. <code>finalize_verified</code> sends OutLayer what the
+            contract already trusts (the seed it checked against the commitment, the verified VRF output and the roster
+            hashes) plus the recorded actions. A TEE re-deals and replays every hand with the same engine, rejects any
+            illegal action, and returns the ranking. <code>on_settlement_checked</code> pays only if it matches.
+          </p>
+          <p>
+            {config?.settlementVerifier
+              ? `Active · replay program ${config.settlementVerifier}`
+              : 'Not enabled on this contract; results are operator-asserted.'}
+          </p>
+        </section>
+        <section className="content-panel">
+          <div className="panel-heading">
             <span>NEP-245 TROPHIES</span>
             <Award size={18} />
           </div>
@@ -201,7 +229,11 @@ export function NearPage({
             Solana, or from ETH, SOL or BTC. Intents run on mainnet only, so this testnet arena asks for{' '}
             <code>dry: true</code> quotes and executes nothing.
           </p>
-          <p>{config?.intentsReady ? 'Quotes enabled.' : 'Quotes disabled: no mainnet recipient configured.'}</p>
+          <p>
+            {config?.intentsReady
+              ? 'Quotes enabled.'
+              : 'Quotes are off on this server until a mainnet recipient is set.'}
+          </p>
         </section>
         <section className="content-panel">
           <div className="panel-heading">
@@ -209,13 +241,14 @@ export function NearPage({
             <Bot size={18} />
           </div>
           <p>
-            Arena Coach is listed on market.near.ai. Buyers hire it per job. It reads public arena records, writes the
-            analysis on a NEAR AI Cloud TEE model and delivers Markdown through the marketplace's held-payment flow.
+            Arena Coach is an analyst agent built for market.near.ai. Buyers hire it per job; it reads public arena
+            records, writes its analysis on a NEAR AI Cloud TEE model and delivers Markdown through the marketplace's
+            held-payment flow.
           </p>
           <p>
             {config?.agentMarket.enabled
               ? `Worker online · ${config.agentMarket.delivered} delivered${config.agentMarket.lastError ? ` · last error: ${config.agentMarket.lastError}` : ''}`
-              : 'Worker not configured on this server.'}{' '}
+              : 'The marketplace worker is not running on this server; the preview below uses the same pipeline.'}{' '}
             {config?.agentMarket.listing && (
               <a className="text-link" href={config.agentMarket.listing} target="_blank" rel="noreferrer">
                 LISTING <ExternalLink size={14} />

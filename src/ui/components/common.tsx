@@ -10,7 +10,7 @@ export function CardFace({ card }: { card: string }) {
     red = suit === 'h' || suit === 'd';
   return (
     <span className={`card-face ${red ? 'red' : ''}`}>
-      <b>{card.slice(0, -1)}</b>
+      <b>{card.slice(0, -1) === 'T' ? '10' : card.slice(0, -1)}</b>
       <span>{{ s: '♠', h: '♥', d: '♦', c: '♣' }[suit as 's' | 'h' | 'd' | 'c'] || suit}</span>
     </span>
   );

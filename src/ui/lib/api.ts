@@ -158,7 +158,7 @@ export const route = () => location.hash.slice(1) || '/';
 
 export const go = (path: string) => {
   location.hash = path;
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  window.scrollTo({ top: 0, behavior: 'instant' });
 };
 
 export const timeLeft = (value: string | null) => {

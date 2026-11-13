@@ -1,7 +1,7 @@
 import { playHand, type HandResult } from '../../engine/hand';
 
 /** Re-run recorded legal actions against the seeded engine. This proves local replay consistency,
- * not that the centralized server chose an unbiased seed or that Arc paid a prize. */
+ * on its own; the binding check is the OutLayer replay the NEAR contract runs before paying out. */
 export async function replayMatches(
   hand: HandResult,
   blinds?: { smallBlind: number; bigBlind: number },

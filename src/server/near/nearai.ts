@@ -92,7 +92,12 @@ export async function nearAiDecision(
 
 type AttestationReport = {
   request_nonce?: string;
-  model_attestations?: { signing_address?: string; nvidia_payload?: unknown; intel_quote?: string; request_nonce?: string }[];
+  model_attestations?: {
+    signing_address?: string;
+    nvidia_payload?: unknown;
+    intel_quote?: string;
+    request_nonce?: string;
+  }[];
   gateway_attestation?: { signing_address?: string; intel_quote?: string; request_nonce?: string };
 };
 export type AttestationSummary = {

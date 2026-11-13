@@ -114,7 +114,7 @@ export function score7(cards: number[]) {
 }
 
 /** Share of the pot this hand wins on average against `opponents` random hands (ties split). */
-export function estimateEquity(hole: string[], board: string[], opponents: number, samples: number, seed: number) {
+function estimateEquity(hole: string[], board: string[], opponents: number, samples: number, seed: number) {
   const known = new Set([...hole, ...board]);
   const deck = FULL_DECK.filter(c => !known.has(c)).map(encode);
   const mineFixed = hole.map(encode),

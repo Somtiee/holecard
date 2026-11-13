@@ -19,7 +19,11 @@
 //!   `trophy:<tournament>` to the winner and fungible `champion` / `podium` badges. They are
 //!   soulbound: reputation other apps can read, but nobody can buy.
 //!
-//! Poker itself runs offchain and is operator asserted. The contract enforces the money rules.
+//! - **verified settlement**: with a settlement verifier set, the operator's ranking pays out only
+//!   after an OutLayer TEE replays every hand (workers/replay) from the committed seed, the VRF
+//!   output and the recorded actions, and reaches the same ranking.
+//!
+//! Poker runs offchain for speed. The contract enforces the money rules and, with OutLayer, the result.
 
 use near_sdk::json_types::U128;
 use near_sdk::serde_json::json;
@@ -40,6 +44,8 @@ const AGENT_KEY_METHODS: &str = "enter,withdraw";
 const CALLBACK_GAS: Gas = Gas::from_tgas(10);
 const VRF_REQUEST_GAS: Gas = Gas::from_tgas(200);
 const VRF_CALLBACK_GAS: Gas = Gas::from_tgas(15);
+const SETTLE_REQUEST_GAS: Gas = Gas::from_tgas(170);
+const SETTLE_CALLBACK_GAS: Gas = Gas::from_tgas(70);
 const MIN_VRF_FEE: u128 = 50_000_000_000_000_000_000_000; // 0.05 NEAR; OutLayer refunds the unused part
 const MT_SPEC: &str = "nep245";
 
@@ -147,6 +153,54 @@ pub struct Randomness {
     pub output_hex: Option<String>,
     pub alpha: Option<String>,
     pub signature_hex: Option<String>,
+}
+
+/// OutLayer project that replays a tournament before payout (workers/replay). Stored under a raw
+/// storage key so adding it needed no state migration.
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug)]
+pub struct SettlementVerifier {
+    pub outlayer: AccountId,
+    pub project_id: String,
+}
+
+#[near(serializers = [borsh])]
+#[derive(Clone, Debug)]
+pub struct PendingSettlement {
+    pub ranking: Vec<AccountId>,
+    pub result_hash: String,
+    pub replay_hash: String,
+    pub seed_hex: String,
+}
+
+/// Output of the replay worker. Every field defaults so a malformed reply is a rejection, not a panic.
+#[near(serializers = [json])]
+#[derive(Clone, Debug, Default)]
+#[serde(default)]
+pub struct ReplayOutput {
+    pub tournament_id: String,
+    pub ok: bool,
+    pub error: Option<String>,
+    pub ranking: Vec<String>,
+    pub replay_hash: String,
+}
+
+#[near(serializers = [json])]
+pub struct SettlementStatus {
+    pub verified: bool,
+    pub in_flight: bool,
+    pub last_rejection: Option<String>,
+}
+
+const VERIFIER_KEY: &[u8] = b"settlement_verifier";
+fn pending_key(id: &str) -> Vec<u8> {
+    format!("settle_pending:{id}").into_bytes()
+}
+fn verified_key(id: &str) -> Vec<u8> {
+    format!("settle_verified:{id}").into_bytes()
+}
+fn rejected_key(id: &str) -> Vec<u8> {
+    format!("settle_rejected:{id}").into_bytes()
 }
 
 #[near(serializers = [borsh, json])]
@@ -580,8 +634,8 @@ impl Arena {
         t
     }
 
-    /// The operator asserts the ranking. The contract checks the seed reveal, that every ranked
-    /// agent paid in, that shares are the frozen ones, and that payouts sum to the pool exactly.
+    /// Operator-asserted settlement, used only when no settlement verifier is configured. With a
+    /// verifier set, results must go through `finalize_verified` so OutLayer replays them first.
     pub fn finalize(
         &mut self,
         tournament_id: String,
@@ -591,82 +645,173 @@ impl Arena {
         ranking: Vec<AccountId>,
     ) -> Tournament {
         self.assert_operator();
-        require!(!self.paused, "PAUSED");
-        let mut t = self.tournament(&tournament_id);
         require!(
-            t.state == TournamentState::Running
-                && env::block_timestamp_ms() <= t.started_at_ms + t.duration_ms + t.grace_ms,
-            "CANNOT_FINALIZE"
+            self.settlement_verifier().is_none(),
+            "VERIFIED_SETTLEMENT_REQUIRED"
         );
+        require!(is_hash(&replay_hash), "INVALID_EVIDENCE");
+        let t = self.tournament(&tournament_id);
+        let seed = self.check_proposal(&t, &result_hash, &seed_reveal, &ranking);
+        self.settle(t, &ranking, result_hash, replay_hash, &seed)
+    }
+
+    /// Proposes a ranking that only pays out after OutLayer replays the whole match in a TEE.
+    /// The contract supplies every input it already trusts (the seed reveal it checks against the
+    /// commitment, the verified VRF output, the roster commitments and the number of paid places);
+    /// the operator supplies only the preimages of its commitments and the action log, whose hash
+    /// becomes `replay_hash`. `on_settlement_checked` pays only if the replayed ranking matches.
+    #[payable]
+    pub fn finalize_verified(
+        &mut self,
+        tournament_id: String,
+        result_hash: String,
+        seed_reveal: String,
+        ranking: Vec<AccountId>,
+        rules: String,
+        configs: Vec<String>,
+        hands: Vec<String>,
+    ) -> Promise {
+        self.assert_operator();
+        let verifier = self
+            .settlement_verifier()
+            .unwrap_or_else(|| env::panic_str("NO_SETTLEMENT_VERIFIER"));
+        let fee = env::attached_deposit();
         require!(
-            is_hash(&result_hash) && is_hash(&replay_hash),
-            "INVALID_EVIDENCE"
+            fee.as_yoctonear() >= MIN_VRF_FEE,
+            "ATTACH_0.05_NEAR_FOR_OUTLAYER"
         );
-        let seed = from_hex(&seed_reveal).unwrap_or_else(|| env::panic_str("INVALID_SEED"));
-        require!(sha256_hex(&seed) == t.seed_commitment, "SEED_MISMATCH");
-        require!(ranking.len() == t.shares.len(), "INVALID_RANKING");
-        if self.randomness_source.is_some() {
-            require!(
-                t.randomness
-                    .as_ref()
-                    .map(|r| r.status == "verified")
-                    .unwrap_or(false),
-                "RANDOMNESS_NOT_VERIFIED"
-            );
-        }
-        let pool = t.prize_pool.0;
-        let mut allocated: u128 = 0;
-        let mut payouts = Vec::with_capacity(ranking.len());
-        for (i, agent_id) in ranking.iter().enumerate() {
-            require!(t.entered.contains(agent_id), "NOT_ENTRANT");
-            require!(!ranking[..i].contains(agent_id), "DUPLICATE_RANK");
-            let share = if i == ranking.len() - 1 {
-                pool - allocated
-            } else {
-                pool * t.shares[i] as u128 / BPS_TOTAL as u128
-            };
-            require!(share > 0, "DUST_PRIZE");
-            allocated += share;
-            let mut agent = self.agent(agent_id);
-            agent.balance = U128(agent.balance.0 + share);
-            agent.winnings = U128(agent.winnings.0 + share);
-            if i == 0 {
-                agent.wins += 1;
-            }
-            self.agents.insert(agent_id.clone(), agent);
-            payouts.push(Payout {
-                agent: agent_id.clone(),
-                amount: U128(share),
-            });
-            self.mint(agent_id, "podium", 1, None);
-            if i == 0 {
-                self.mint(agent_id, "champion", 1, None);
-                let trophy = format!("trophy:{tournament_id}");
-                self.mt_metadata.insert(
-                    trophy.clone(),
-                    TokenMetadata {
-                        title: "Holecard champion".into(),
-                        description: format!("Won tournament {tournament_id} on Holecard; prize {share} yoctoNEAR."),
-                        tournament: Some(tournament_id.clone()),
-                        owner: Some(agent_id.clone()),
-                        issued_at_ms: env::block_timestamp_ms(),
-                    },
-                );
-                self.mint(agent_id, &trophy, 1, Some(tournament_id.clone()));
-            }
-        }
-        require!(allocated == pool, "ACCOUNTING_ERROR");
-        t.prize_pool = U128(0);
-        t.result_hash = Some(result_hash);
-        t.replay_hash = Some(replay_hash);
-        t.revealed_seed = Some(to_hex(&seed));
-        t.payouts = payouts;
-        t.state = TournamentState::Finalized;
-        self.tournaments.insert(tournament_id.clone(), t.clone());
+        let t = self.tournament(&tournament_id);
+        let seed = self.check_proposal(&t, &result_hash, &seed_reveal, &ranking);
+        require!(
+            env::storage_read(&pending_key(&tournament_id)).is_none(),
+            "SETTLEMENT_CHECK_IN_FLIGHT"
+        );
+        let replay_hash = sha256_hex(hands.join("\n").as_bytes());
+        let pending = PendingSettlement {
+            ranking: ranking.clone(),
+            result_hash,
+            replay_hash: replay_hash.clone(),
+            seed_hex: to_hex(&seed),
+        };
+        env::storage_write(
+            &pending_key(&tournament_id),
+            &near_sdk::borsh::to_vec(&pending).unwrap(),
+        );
+        env::storage_remove(&rejected_key(&tournament_id));
+        let input = json!({
+            "tournament_id": tournament_id,
+            "seed_hex": to_hex(&seed),
+            "vrf_hex": t.randomness.as_ref().and_then(|r| r.output_hex.clone()),
+            "rules_hash": t.rules_hash,
+            "rules": rules,
+            "roster": t.roster,
+            "entered": t.entered,
+            "configs": configs,
+            "hands": hands,
+            "places": t.shares.len(),
+        });
+        let args = json!({
+            "source": {"Project": {"project_id": verifier.project_id}},
+            "resource_limits": {"max_instructions": 20_000_000_000u64, "max_memory_mb": 128u32, "max_execution_seconds": 60u64},
+            "input_data": input.to_string(),
+            "response_format": "Json",
+            "payer_account_id": env::predecessor_account_id(),
+        });
         env::log_str(&format!(
-            "EVENT_JSON:{{\"event\":\"finalized\",\"tournament\":\"{tournament_id}\"}}"
+            "EVENT_JSON:{{\"event\":\"settlement_proposed\",\"tournament\":\"{tournament_id}\",\"replay_hash\":\"{replay_hash}\"}}"
         ));
-        t
+        Promise::new(verifier.outlayer)
+            .function_call(
+                "request_execution".to_string(),
+                args.to_string().into_bytes(),
+                fee,
+                SETTLE_REQUEST_GAS,
+            )
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(SETTLE_CALLBACK_GAS)
+                    .on_settlement_checked(tournament_id),
+            )
+    }
+
+    #[private]
+    pub fn on_settlement_checked(
+        &mut self,
+        tournament_id: String,
+        #[callback_result] result: Result<Option<ReplayOutput>, PromiseError>,
+    ) -> bool {
+        let Some(raw) = env::storage_read(&pending_key(&tournament_id)) else {
+            return false;
+        };
+        env::storage_remove(&pending_key(&tournament_id));
+        let pending: PendingSettlement = near_sdk::borsh::from_slice(&raw).unwrap();
+        let t = self.tournament(&tournament_id);
+        let expected: Vec<String> = pending.ranking.iter().map(|a| a.to_string()).collect();
+        let reason = match result.ok().flatten() {
+            None => Some("OUTLAYER_NO_RESULT".to_string()),
+            Some(out) if !out.ok => Some(out.error.unwrap_or_else(|| "REPLAY_FAILED".into())),
+            Some(out)
+                if out.tournament_id != tournament_id || out.replay_hash != pending.replay_hash =>
+            {
+                Some("REPLAY_INPUT_MISMATCH".into())
+            }
+            Some(out) if out.ranking != expected => {
+                Some(format!("RANKING_MISMATCH:{}", out.ranking.join(",")))
+            }
+            Some(_) if t.state != TournamentState::Running => Some("NOT_RUNNING".into()),
+            Some(_) => None,
+        };
+        if let Some(reason) = reason {
+            env::storage_write(&rejected_key(&tournament_id), reason.as_bytes());
+            env::log_str(&format!(
+                "EVENT_JSON:{{\"event\":\"settlement_rejected\",\"tournament\":\"{tournament_id}\",\"reason\":{}}}",
+                json!(reason)
+            ));
+            return false;
+        }
+        let seed = from_hex(&pending.seed_hex).unwrap();
+        self.settle(
+            t,
+            &pending.ranking,
+            pending.result_hash,
+            pending.replay_hash,
+            &seed,
+        );
+        env::storage_write(&verified_key(&tournament_id), &[1]);
+        env::log_str(&format!(
+            "EVENT_JSON:{{\"event\":\"settlement_verified\",\"tournament\":\"{tournament_id}\"}}"
+        ));
+        true
+    }
+
+    /// Only the contract account's own key may choose the replay program, like the VRF source.
+    pub fn set_settlement_verifier(&mut self, verifier: Option<SettlementVerifier>) {
+        require!(
+            env::predecessor_account_id() == env::current_account_id(),
+            "NOT_CONTRACT_OWNER"
+        );
+        match verifier {
+            Some(v) => {
+                require!(!v.project_id.is_empty(), "INVALID_PROJECT");
+                env::storage_write(VERIFIER_KEY, &near_sdk::borsh::to_vec(&v).unwrap());
+            }
+            None => {
+                env::storage_remove(VERIFIER_KEY);
+            }
+        }
+    }
+
+    pub fn get_settlement_verifier(&self) -> Option<SettlementVerifier> {
+        self.settlement_verifier()
+    }
+
+    pub fn get_settlement_status(&self, tournament_id: String) -> SettlementStatus {
+        SettlementStatus {
+            verified: env::storage_read(&verified_key(&tournament_id)).is_some(),
+            in_flight: env::storage_read(&pending_key(&tournament_id)).is_some(),
+            last_rejection: env::storage_read(&rejected_key(&tournament_id))
+                .map(|r| String::from_utf8_lossy(&r).into_owned()),
+        }
     }
 
     // ---------- verifiable randomness (OutLayer VRF via yield/resume) ----------
@@ -923,6 +1068,109 @@ impl Arena {
     }
 
     // ---------- internals ----------
+
+    fn settlement_verifier(&self) -> Option<SettlementVerifier> {
+        env::storage_read(VERIFIER_KEY).and_then(|raw| near_sdk::borsh::from_slice(&raw).ok())
+    }
+
+    /// Checks shared by both settlement paths. Returns the revealed seed bytes.
+    fn check_proposal(
+        &self,
+        t: &Tournament,
+        result_hash: &str,
+        seed_reveal: &str,
+        ranking: &[AccountId],
+    ) -> Vec<u8> {
+        require!(!self.paused, "PAUSED");
+        require!(
+            t.state == TournamentState::Running
+                && env::block_timestamp_ms() <= t.started_at_ms + t.duration_ms + t.grace_ms,
+            "CANNOT_FINALIZE"
+        );
+        require!(is_hash(result_hash), "INVALID_EVIDENCE");
+        let seed = from_hex(seed_reveal).unwrap_or_else(|| env::panic_str("INVALID_SEED"));
+        require!(sha256_hex(&seed) == t.seed_commitment, "SEED_MISMATCH");
+        require!(ranking.len() == t.shares.len(), "INVALID_RANKING");
+        for (i, agent_id) in ranking.iter().enumerate() {
+            require!(t.entered.contains(agent_id), "NOT_ENTRANT");
+            require!(!ranking[..i].contains(agent_id), "DUPLICATE_RANK");
+        }
+        if self.randomness_source.is_some() {
+            require!(
+                t.randomness
+                    .as_ref()
+                    .map(|r| r.status == "verified")
+                    .unwrap_or(false),
+                "RANDOMNESS_NOT_VERIFIED"
+            );
+        }
+        seed
+    }
+
+    /// Pays the frozen shares to the ranking and mints trophies. Callers have run `check_proposal`.
+    fn settle(
+        &mut self,
+        mut t: Tournament,
+        ranking: &[AccountId],
+        result_hash: String,
+        replay_hash: String,
+        seed: &[u8],
+    ) -> Tournament {
+        let tournament_id = t.id.clone();
+        let pool = t.prize_pool.0;
+        let mut allocated: u128 = 0;
+        let mut payouts = Vec::with_capacity(ranking.len());
+        for (i, agent_id) in ranking.iter().enumerate() {
+            let share = if i == ranking.len() - 1 {
+                pool - allocated
+            } else {
+                pool * t.shares[i] as u128 / BPS_TOTAL as u128
+            };
+            require!(share > 0, "DUST_PRIZE");
+            allocated += share;
+            let mut agent = self.agent(agent_id);
+            agent.balance = U128(agent.balance.0 + share);
+            agent.winnings = U128(agent.winnings.0 + share);
+            if i == 0 {
+                agent.wins += 1;
+            }
+            self.agents.insert(agent_id.clone(), agent);
+            payouts.push(Payout {
+                agent: agent_id.clone(),
+                amount: U128(share),
+            });
+            self.mint(agent_id, "podium", 1, None);
+            if i == 0 {
+                self.mint(agent_id, "champion", 1, None);
+                let trophy = format!("trophy:{tournament_id}");
+                self.mt_metadata.insert(
+                    trophy.clone(),
+                    TokenMetadata {
+                        title: "Holecard champion".into(),
+                        description: format!(
+                            "Won tournament {tournament_id} on Holecard; prize {share} yoctoNEAR."
+                        ),
+                        tournament: Some(tournament_id.clone()),
+                        owner: Some(agent_id.clone()),
+                        issued_at_ms: env::block_timestamp_ms(),
+                    },
+                );
+                self.mint(agent_id, &trophy, 1, Some(tournament_id.clone()));
+            }
+        }
+        require!(allocated == pool, "ACCOUNTING_ERROR");
+        t.prize_pool = U128(0);
+        t.result_hash = Some(result_hash);
+        t.replay_hash = Some(replay_hash);
+        t.revealed_seed = Some(to_hex(seed));
+        t.payouts = payouts;
+        t.state = TournamentState::Finalized;
+        self.tournaments.insert(tournament_id.clone(), t.clone());
+        env::log_str(&format!(
+            "EVENT_JSON:{{\"event\":\"finalized\",\"tournament\":\"{tournament_id}\"}}"
+        ));
+        t
+    }
 
     fn start_internal(t: &mut Tournament) {
         t.state = TournamentState::Running;

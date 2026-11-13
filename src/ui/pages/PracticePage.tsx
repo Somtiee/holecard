@@ -62,7 +62,7 @@ function Card({ card, small, dim }: { card: string; small?: boolean; dim?: boole
     red = suit === 'h' || suit === 'd';
   return (
     <span className={`card-face ${red ? 'red' : ''} ${small ? 'mini' : ''} ${dim ? 'dim' : ''}`}>
-      <b>{card.slice(0, -1)}</b>
+      <b>{card.slice(0, -1) === 'T' ? '10' : card.slice(0, -1)}</b>
       <span>{{ s: '♠', h: '♥', d: '♦', c: '♣' }[suit as 's' | 'h' | 'd' | 'c'] || suit}</span>
     </span>
   );
@@ -86,7 +86,7 @@ export default function PracticePage({ onMakeReal }: { onMakeReal: (preset: Prac
       return {};
     }
   }, []);
-  const [name, setName] = useState(saved.name || ''),
+  const [name, setName] = useState(saved.name || 'NIGHTOWL'),
     [strategy, setStrategy] = useState(saved.strategy || 'Aggressive');
   const [result, setResult] = useState<Result | null>(null),
     [busy, setBusy] = useState(false),

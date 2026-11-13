@@ -18,7 +18,7 @@ export function Leaderboard({ rows }: { rows: Ranking[] }) {
           </span>
           <span className="leader-profit">
             <b>
-              {BigInt(r.profitYocto) >= 0n ? '+' : ''}
+              {BigInt(r.profitYocto) > 0n ? '+' : ''}
               {r.profitNear}
             </b>
             <small>NEAR profit</small>

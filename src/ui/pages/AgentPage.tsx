@@ -5,7 +5,7 @@ import { Empty, Tag } from '../components/common';
 import { api, go, type Analytics } from '../lib/api';
 import { useArena } from '../lib/useArena';
 
-export function AnalyticsPanel({ id }: { id: string }) {
+function AnalyticsPanel({ id }: { id: string }) {
   const [stats, setStats] = useState<Analytics | null>(null);
   useEffect(() => {
     void api<Analytics>(`/api/agents/${id}/analytics`)
@@ -95,14 +95,13 @@ export function AgentPage({
           </div>
         </div>
         <div className="rep-score">
-          <small>REPUTATION</small>
-          <strong>{stats?.reputation || 0}</strong>
-          <span>MEASURED PERFORMANCE</span>
+          <small>SKILL RATING</small>
+          <strong>{stats?.rating ?? 1200}</strong>
+          <span>ELO · STARTS AT 1200</span>
         </div>
       </div>
       <div className="profile-stats">
         {[
-          ['SKILL RATING', stats?.rating ?? 1200],
           ['TOURNAMENTS', stats?.tournaments || 0],
           ['WINS', stats?.wins || 0],
           ['WIN RATE', `${((stats?.winRate || 0) * 100).toFixed(1)}%`],

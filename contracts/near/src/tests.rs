@@ -574,3 +574,193 @@ fn failed_agent_creation_refunds_the_operator() {
     let debug = format!("{:?}", refund.expect("refund to operator").actions);
     assert!(debug.contains(&format!("{}", NEAR / 10)), "{debug}");
 }
+
+// ---------- OutLayer-verified settlement ----------
+
+fn with_verifier(arena: &mut Arena) {
+    ctx("arena.testnet", 0, 1_000);
+    arena.set_settlement_verifier(Some(SettlementVerifier {
+        outlayer: acc("outlayer.testnet"),
+        project_id: "arena.testnet/replay".into(),
+    }));
+}
+
+fn hands() -> Vec<String> {
+    vec!["c k k k".into(), "r60 f".into()]
+}
+
+fn propose(arena: &mut Arena, ranking: Vec<AccountId>) {
+    ctx("operator.testnet", MIN_VRF_FEE, 5 * MIN);
+    let _ = arena.finalize_verified(
+        "t1".into(),
+        hash("result"),
+        to_hex(&seed()),
+        ranking,
+        "{}".into(),
+        vec![],
+        hands(),
+    );
+}
+
+fn replay_out(ranking: &[&str]) -> ReplayOutput {
+    ReplayOutput {
+        tournament_id: "t1".into(),
+        ok: true,
+        error: None,
+        ranking: ranking.iter().map(|s| s.to_string()).collect(),
+        replay_hash: sha256_hex(hands().join("\n").as_bytes()),
+    }
+}
+
+#[test]
+#[should_panic(expected = "VERIFIED_SETTLEMENT_REQUIRED")]
+fn verifier_blocks_operator_asserted_finalize() {
+    let mut arena = three();
+    with_verifier(&mut arena);
+    running(&mut arena);
+    ctx("operator.testnet", 0, 5 * MIN);
+    arena.finalize(
+        "t1".into(),
+        hash("r"),
+        hash("p"),
+        to_hex(&seed()),
+        vec![acc(A)],
+    );
+}
+
+#[test]
+fn matching_replay_pays_and_marks_verified() {
+    let mut arena = three();
+    with_verifier(&mut arena);
+    running(&mut arena);
+    propose(&mut arena, vec![acc(B)]);
+    assert!(arena.get_settlement_status("t1".into()).in_flight);
+    assert_eq!(
+        arena.get_tournament("t1".into()).unwrap().state,
+        TournamentState::Running
+    );
+    ctx("arena.testnet", 0, 5 * MIN + 1);
+    assert!(arena.on_settlement_checked("t1".into(), Ok(Some(replay_out(&[B])))));
+    let t = arena.get_tournament("t1".into()).unwrap();
+    assert_eq!(t.state, TournamentState::Finalized);
+    assert_eq!(
+        t.replay_hash.unwrap(),
+        sha256_hex(hands().join("\n").as_bytes())
+    );
+    assert_eq!(
+        arena.get_agent(acc(B)).unwrap().balance.0,
+        2 * FEE + 2 * FEE
+    );
+    let s = arena.get_settlement_status("t1".into());
+    assert!(s.verified && !s.in_flight && s.last_rejection.is_none());
+}
+
+#[test]
+fn mismatched_or_failed_replay_pays_nothing_and_allows_a_new_proposal() {
+    let mut arena = three();
+    with_verifier(&mut arena);
+    running(&mut arena);
+    propose(&mut arena, vec![acc(A)]);
+    ctx("arena.testnet", 0, 5 * MIN + 1);
+    assert!(!arena.on_settlement_checked("t1".into(), Ok(Some(replay_out(&[B])))));
+    let s = arena.get_settlement_status("t1".into());
+    assert!(!s.verified && !s.in_flight);
+    assert!(s.last_rejection.unwrap().starts_with("RANKING_MISMATCH"));
+    assert_eq!(
+        arena.get_tournament("t1".into()).unwrap().state,
+        TournamentState::Running
+    );
+    assert_eq!(arena.get_agent(acc(A)).unwrap().balance.0, 2 * FEE);
+
+    propose(&mut arena, vec![acc(B)]);
+    ctx("arena.testnet", 0, 5 * MIN + 2);
+    assert!(!arena.on_settlement_checked("t1".into(), Ok(None)));
+    assert_eq!(
+        arena
+            .get_settlement_status("t1".into())
+            .last_rejection
+            .unwrap(),
+        "OUTLAYER_NO_RESULT"
+    );
+
+    propose(&mut arena, vec![acc(B)]);
+    let mut bad = replay_out(&[B]);
+    bad.replay_hash = hash("other log");
+    ctx("arena.testnet", 0, 5 * MIN + 3);
+    assert!(!arena.on_settlement_checked("t1".into(), Ok(Some(bad))));
+
+    propose(&mut arena, vec![acc(B)]);
+    ctx("arena.testnet", 0, 5 * MIN + 4);
+    assert!(arena.on_settlement_checked("t1".into(), Ok(Some(replay_out(&[B])))));
+}
+
+#[test]
+#[should_panic(expected = "SETTLEMENT_CHECK_IN_FLIGHT")]
+fn one_settlement_check_at_a_time() {
+    let mut arena = three();
+    with_verifier(&mut arena);
+    running(&mut arena);
+    propose(&mut arena, vec![acc(B)]);
+    propose(&mut arena, vec![acc(A)]);
+}
+
+#[test]
+#[should_panic(expected = "NOT_OPERATOR")]
+fn only_operator_proposes_verified_settlement() {
+    let mut arena = three();
+    with_verifier(&mut arena);
+    running(&mut arena);
+    ctx(A, MIN_VRF_FEE, 5 * MIN);
+    let _ = arena.finalize_verified(
+        "t1".into(),
+        hash("r"),
+        to_hex(&seed()),
+        vec![acc(A)],
+        "{}".into(),
+        vec![],
+        hands(),
+    );
+}
+
+#[test]
+#[should_panic(expected = "ATTACH_0.05_NEAR_FOR_OUTLAYER")]
+fn verified_settlement_requires_outlayer_fee() {
+    let mut arena = three();
+    with_verifier(&mut arena);
+    running(&mut arena);
+    ctx("operator.testnet", 0, 5 * MIN);
+    let _ = arena.finalize_verified(
+        "t1".into(),
+        hash("r"),
+        to_hex(&seed()),
+        vec![acc(A)],
+        "{}".into(),
+        vec![],
+        hands(),
+    );
+}
+
+#[test]
+#[should_panic(expected = "NOT_CONTRACT_OWNER")]
+fn operator_cannot_change_settlement_verifier() {
+    let mut arena = three();
+    ctx("operator.testnet", 0, 1_000);
+    arena.set_settlement_verifier(None);
+}
+
+#[test]
+fn late_replay_after_cancel_pays_nothing() {
+    let mut arena = three();
+    with_verifier(&mut arena);
+    running(&mut arena);
+    propose(&mut arena, vec![acc(B)]);
+    ctx("anyone.testnet", 0, 2_000 + 85 * MIN);
+    arena.cancel("t1".into());
+    ctx("arena.testnet", 0, 2_000 + 86 * MIN);
+    assert!(!arena.on_settlement_checked("t1".into(), Ok(Some(replay_out(&[B])))));
+    assert_eq!(
+        arena.get_tournament("t1".into()).unwrap().state,
+        TournamentState::Cancelled
+    );
+    assert_eq!(arena.get_agent(acc(B)).unwrap().balance.0, 3 * FEE);
+}

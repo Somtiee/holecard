@@ -26,6 +26,7 @@ export default function App() {
     const fn = () => {
       setPath(route());
       setMenu(false);
+      window.scrollTo({ top: 0, behavior: 'instant' });
     };
     addEventListener('hashchange', fn);
     return () => removeEventListener('hashchange', fn);
@@ -164,13 +165,13 @@ export default function App() {
                 <span className="signin-menu">
                   <button
                     disabled={!arena.config?.fastAuth?.clientId && location.origin !== 'http://localhost:3000'}
-                    title="NEAR Auth's shared testnet client only allows http://localhost:3000; set FASTAUTH_CLIENT_ID for other origins"
+                    title="Email, Google and passkey sign-in through NEAR Auth"
                     onClick={() => void connectSocial()}
                   >
                     Email · Google · Passkey
                     <small>
                       {!arena.config?.fastAuth?.clientId && location.origin !== 'http://localhost:3000'
-                        ? 'Needs FASTAUTH_CLIENT_ID on this origin'
+                        ? 'Coming soon on this domain · use a wallet'
                         : 'NEAR Auth · no wallet, no gas'}
                     </small>
                   </button>
@@ -264,8 +265,8 @@ export default function App() {
           </div>
           <div className="f-bottom">
             <p className="legal">
-              Testnet arena built for NEAR HACKATHON. Poker outcomes are operator asserted; escrow and payouts are
-              enforced by the NEAR contract.
+              A testnet arena built for the NEAR hackathon. Poker runs offchain; escrow, payouts and an OutLayer replay
+              of every result are enforced by the NEAR contract. Testnet NEAR has no value.
             </p>
             <span>© {new Date().getFullYear()} Holecard</span>
           </div>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, Award, Cpu, Dices, ExternalLink, Gift, KeyRound, Repeat, Wallet } from 'lucide-react';
+import { ArrowRight, Award, Cpu, Dices, ExternalLink, Gift, KeyRound, Repeat, ShieldCheck, Wallet } from 'lucide-react';
 import { depositToAgent, nearToYocto, withdrawFromAgent } from '../wallet/near';
 
 export type NearConfig = {
@@ -23,6 +23,7 @@ export type NearConfig = {
     listing: string | null;
   };
   house: { enabled: boolean; maxEntryNear: string | null; agents: { name: string; strategy: string }[] };
+  settlementVerifier: string | null;
 };
 
 export type AccessKey = {
@@ -98,7 +99,7 @@ export async function post<T>(path: string, body: unknown): Promise<T> {
 export const shortId = (v: string | null | undefined, n = 8) =>
   v ? (v.length > 2 * n + 1 ? `${v.slice(0, n)}…${v.slice(-n + 2)}` : v) : '—';
 
-export const yoctoNear = (v: string) => {
+const yoctoNear = (v: string) => {
   const b = BigInt(v);
   return `${b / 10n ** 24n}.${(b % 10n ** 24n).toString().padStart(24, '0').slice(0, 3)}`;
 };
@@ -418,6 +419,130 @@ export function RandomnessPanel({ tournamentId }: { tournamentId: string }) {
       ) : (
         <p>Requested from OutLayer when the match starts. Deck entropy cannot be re-rolled once verified.</p>
       )}
+    </section>
+  );
+}
+
+type Verification = {
+  handChecks: { handNumber: number; valid: boolean; seedMatches: boolean }[];
+  engineReplayVerified: boolean;
+  seedCommitmentMatches: boolean;
+  onchain: {
+    state: string;
+    rosterHashMatches: boolean;
+    seedCommitmentMatches: boolean;
+    randomness: { status: string } | null;
+    revealedSeedMatches: boolean | null;
+    replayHashMatches: boolean | null;
+    payouts: { agent: string; amount: string }[];
+  } | null;
+  teeReceipts: { total: number; verified: number };
+  decisionPolicy: string;
+  settlement: {
+    verifierProject: string | null;
+    verifiedByOutLayer: boolean;
+    inFlight: boolean;
+    lastRejection: string | null;
+  };
+};
+
+const yoctoToNear = (y: string) => {
+  const v = BigInt(y),
+    whole = v / 10n ** 24n,
+    frac = ((v % 10n ** 24n) / 10n ** 20n).toString().padStart(4, '0').replace(/0+$/, '');
+  return frac ? `${whole}.${frac}` : `${whole}`;
+};
+
+/** Every proof behind one tournament as a checklist anyone can re-run. */
+export function SettlementPanel({ tournamentId, state }: { tournamentId: string; state: string }) {
+  const [v, setV] = useState<Verification | null>(null),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState('');
+  const run = () => {
+    setBusy(true);
+    setError('');
+    void get<Verification>(`/api/tournaments/${tournamentId}/verification`)
+      .then(setV)
+      .catch(e => setError((e as Error).message))
+      .finally(() => setBusy(false));
+  };
+  useEffect(() => {
+    if (['settled', 'finalizing'].includes(state)) run();
+  }, [tournamentId, state]);
+  const hands = v?.handChecks.length ?? 0;
+  const s = v?.settlement;
+  const rows: [boolean | null, string][] = v
+    ? [
+        [v.onchain?.rosterHashMatches ?? null, 'Roster and strategies locked on NEAR before play'],
+        [v.seedCommitmentMatches, 'Operator seed matches its pre-match commitment'],
+        [
+          v.onchain?.randomness ? v.onchain.randomness.status === 'verified' : null,
+          'Shuffle entropy from OutLayer VRF, proof checked onchain',
+        ],
+        [
+          hands ? v.engineReplayVerified : null,
+          `${hands} hand${hands === 1 ? '' : 's'} replay to the same result here`,
+        ],
+        [
+          v.teeReceipts.total ? v.teeReceipts.verified === v.teeReceipts.total : null,
+          v.decisionPolicy === 'fixture'
+            ? 'Decisions from the labelled fixture policy (no model)'
+            : `${v.teeReceipts.verified}/${v.teeReceipts.total} model decisions carry a NEAR AI TEE signature`,
+        ],
+        [
+          s?.verifiedByOutLayer ? true : s?.lastRejection ? false : null,
+          s?.verifiedByOutLayer
+            ? 'Payout released only after an OutLayer TEE replayed the match'
+            : s?.inFlight
+              ? 'OutLayer is replaying the match before payout'
+              : s?.lastRejection
+                ? `OutLayer replay rejected the result: ${s.lastRejection}`
+                : s?.verifierProject
+                  ? 'OutLayer replay runs when the match ends'
+                  : 'Settled before replay verification was enabled',
+        ],
+      ]
+    : [];
+  return (
+    <section className="content-panel verify-panel">
+      <div className="panel-heading">
+        <span>PROOF OF RESULT</span>
+        <ShieldCheck size={17} />
+      </div>
+      {v ? (
+        <ul className="checklist">
+          {rows.map(([ok, label], n) => (
+            <li
+              key={label}
+              className={ok === true ? 'pass' : ok === false ? 'fail' : 'wait'}
+              style={{ '--n': n } as React.CSSProperties}
+            >
+              <i aria-hidden="true">{ok === true ? '✓' : ok === false ? '✕' : '·'}</i>
+              {label}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p>
+          Re-run every check behind this match: roster commitment, seed reveal, VRF proof, hand-by-hand replay, model
+          signatures and the OutLayer settlement replay.
+        </p>
+      )}
+      {v?.onchain?.payouts.length ? (
+        <div className="payout-lines">
+          <small>PAID BY THE CONTRACT</small>
+          {v.onchain.payouts.map(p => (
+            <div key={p.agent}>
+              <span>{p.agent.split('.')[0]}</span>
+              <b>{yoctoToNear(p.amount)} NEAR</b>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {error && <p className="fund-hint">{error}</p>}
+      <button className="quiet-link" disabled={busy} onClick={run}>
+        {busy ? 'CHECKING…' : v ? 'RUN AGAIN' : 'RUN ALL CHECKS'} <ArrowRight size={15} />
+      </button>
     </section>
   );
 }

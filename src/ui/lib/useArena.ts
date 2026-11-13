@@ -33,12 +33,16 @@ export function useArena() {
     setHealth(h);
     setOwner(m.accountId);
   }, []);
+  // Lists come from the arena database and are fast; chain status can lag behind a slow RPC, so it never
+  // holds the first paint.
   const refresh = useCallback(async () => {
+    const status = refreshStatus();
     try {
-      await Promise.all([refreshLists(), refreshStatus()]);
+      await refreshLists();
     } finally {
       setLoading(false);
     }
+    await status;
   }, [refreshLists, refreshStatus]);
   useEffect(() => {
     void refresh().catch(() => setLoading(false));

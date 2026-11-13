@@ -15,3 +15,5 @@ docs
 deployments
 *.tsbuildinfo
 .DS_Store
+contracts/near/target
+workers/*/target

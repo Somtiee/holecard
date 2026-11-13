@@ -1,15 +1,27 @@
 import { go, type Health } from '../lib/api';
 
-/** Holecard mark: a playing card with a hole punched through it and its corner peeled back to show green. */
-export function Mark({ size = 22 }: { size?: number }) {
+/**
+ * Holecard mark: two fanned hole cards. The front card has a hole punched through it with a green core,
+ * the private card nobody else sees. Cards use currentColor; the gap and the hole use --mark-gap
+ * (defaults to the page background), so the mark works on light and dark surfaces.
+ */
+export function Mark({ size = 22, className }: { size?: number; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        className="card"
-        fillRule="evenodd"
-        d="M7 2h7.5L19 6.5V20a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm1.8 11.6a3.2 3.2 0 1 0 6.4 0a3.2 3.2 0 1 0-6.4 0Z"
+    <svg className={className} width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <rect className="mk-card" x="2.6" y="5.2" width="11.2" height="15.6" rx="2.2" transform="rotate(-13 8.2 13)" />
+      <rect
+        className="mk-card mk-front"
+        x="9.6"
+        y="3"
+        width="11.2"
+        height="15.6"
+        rx="2.2"
+        transform="rotate(9 15.2 10.8)"
+        strokeWidth="1.8"
+        paintOrder="stroke"
       />
-      <path className="core" d="M14.5 2v3a1.5 1.5 0 0 0 1.5 1.5h3Z" />
+      <circle className="mk-hole" cx="15.2" cy="10.8" r="2.7" />
+      <circle className="mk-core" cx="15.2" cy="10.8" r="1.25" />
     </svg>
   );
 }

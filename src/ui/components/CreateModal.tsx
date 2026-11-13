@@ -182,7 +182,7 @@ export function CreateModal({
               PRIZE SHARES (BASIS POINTS, COMMA SEPARATED)
               <input value={shares} onChange={e => setShares(e.target.value)} placeholder="7500,2500" />
             </label>
-            <p className="modal-hint">10000 = 100%. Platform fee: 0%. NEAR testnet only.</p>
+            <p className="modal-hint">Shares are in basis points (10000 = 100%). No platform fee. Testnet NEAR only.</p>
           </>
         )}
         {arena.owner && (

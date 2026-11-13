@@ -3,7 +3,7 @@ import { createHash, createHmac, randomBytes } from 'node:crypto';
 /** All commitments are lowercase hex sha256 so the NEAR contract (env::sha256) can recompute them. */
 export const sha256Hex = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 export type RosterSeat = { agent: string; config_hash: string };
-export const configHash = (agent: {
+type AgentConfig = {
   id: string;
   owner: string;
   nearAccount: string;
@@ -11,18 +11,19 @@ export const configHash = (agent: {
   strategy: string;
   model: string;
   description: string;
-}) =>
-  sha256Hex(
-    JSON.stringify({
-      id: agent.id,
-      owner: agent.owner,
-      account: agent.nearAccount,
-      name: agent.name,
-      strategy: agent.strategy,
-      model: agent.model,
-      description: agent.description,
-    }),
-  );
+};
+/** The exact preimage of an entrant's `config_hash`; OutLayer's replay re-hashes it to bind id to account. */
+export const configJson = (agent: AgentConfig) =>
+  JSON.stringify({
+    id: agent.id,
+    owner: agent.owner,
+    account: agent.nearAccount,
+    name: agent.name,
+    strategy: agent.strategy,
+    model: agent.model,
+    description: agent.description,
+  });
+export const configHash = (agent: AgentConfig) => sha256Hex(configJson(agent));
 export function newSeed() {
   const seed = randomBytes(32);
   return { seed: seed.toString('hex'), commitment: sha256Hex(seed) };
@@ -47,15 +48,26 @@ export function rosterHash(seats: RosterSeat[]) {
       .join('\n'),
   );
 }
-export function rulesHash(rules: {
+type Rules = {
   id: string;
   entryYocto: string;
   startingStack: number;
   capacity: number;
   durationSeconds: number;
   shares: number[];
-}) {
-  return sha256Hex(JSON.stringify(rules));
+};
+/** The exact preimage of `rules_hash`, rebuilt at settlement for the replay worker. */
+export const rulesJson = (r: Rules) =>
+  JSON.stringify({
+    id: r.id,
+    entryYocto: r.entryYocto,
+    startingStack: r.startingStack,
+    capacity: r.capacity,
+    durationSeconds: r.durationSeconds,
+    shares: r.shares,
+  });
+export function rulesHash(rules: Rules) {
+  return sha256Hex(rulesJson(rules));
 }
 export function resultCommitment(input: unknown) {
   return sha256Hex(JSON.stringify(input));

@@ -9,7 +9,7 @@ export const NEAR_RPC_URL =
   process.env.NEAR_RPC_URL ||
   (NEAR_NETWORK === 'mainnet' ? 'https://free.rpc.fastnear.com' : 'https://test.rpc.fastnear.com');
 export const NEAR_EXPLORER = NEAR_NETWORK === 'mainnet' ? 'https://nearblocks.io' : 'https://testnet.nearblocks.io';
-export const YOCTO = 10n ** 24n;
+const YOCTO = 10n ** 24n;
 export const contractId = () => {
   const v = process.env.ARENA_CONTRACT_ID;
   if (!v) throw new Error('ARENA_CONTRACT_ID is not configured');

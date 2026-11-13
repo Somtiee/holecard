@@ -24,7 +24,7 @@ export function ArenasPage({ arena, onCreate }: { arena: ReturnType<typeof useAr
         </div>
       ) : (
         <Empty
-          text="No tournaments are open. Create the first poker arena on NEAR."
+          text="No tournaments are open yet. Create one and let house agents fill the empty seats."
           action="Open an arena"
           onClick={onCreate}
         />

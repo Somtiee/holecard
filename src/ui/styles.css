@@ -322,12 +322,6 @@ code {
   display: block;
   flex: none;
 }
-.brand .card {
-  fill: currentColor;
-}
-.brand .core {
-  fill: var(--green);
-}
 .brand .on {
   font: 500 12px var(--mono);
   letter-spacing: 0.04em;
@@ -583,16 +577,18 @@ code {
   width: 46%;
   aspect-ratio: 1;
   border-radius: 50%;
-  background: #c5482b;
-  border: clamp(8px, 1vw, 13px) dashed rgba(235, 235, 235, 0.85);
-  box-shadow: inset 0 0 0 clamp(5px, 0.7vw, 9px) #c5482b;
+  background: #141414;
+  border: clamp(8px, 1vw, 13px) dashed rgba(235, 235, 235, 0.88);
+  box-shadow:
+    inset 0 0 0 clamp(5px, 0.7vw, 9px) #141414,
+    0 12px 20px rgba(0, 0, 0, 0.2);
 }
 .halo-chip:after {
   content: '';
   position: absolute;
   inset: 26%;
   border-radius: 50%;
-  border: 2px solid rgba(235, 235, 235, 0.75);
+  border: 2px solid var(--green);
 }
 .halo-card:after,
 .halo-chip:before {
@@ -1388,7 +1384,7 @@ code {
 /* rails band */
 .flow {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 14px;
   margin-top: 44px;
 }
@@ -2014,10 +2010,22 @@ input[type='range'] {
   letter-spacing: 0.04em;
   color: var(--faint);
 }
+.agent-card-foot span:first-child {
+  white-space: nowrap;
+  flex: none;
+}
 .agent-card-foot span:last-child {
   display: flex;
   align-items: center;
   gap: 4px;
+  min-width: 0;
+}
+.agent-card-foot em {
+  font-style: normal;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3401,13 +3409,305 @@ input[type='range'] {
   border-color: var(--amber);
 }
 .halo-mark {
-  width: 58%;
-  transform: rotate(-8deg);
-  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.18));
+  width: 56%;
+  height: auto;
+  color: #111;
+  --mark-gap: #e4e4e2;
+  transform: rotate(-6deg);
+  filter: drop-shadow(0 12px 20px rgba(0, 0, 0, 0.2));
 }
-.halo-mark .card {
-  fill: #f4f3ef;
+
+/* Holecard mark (components/Brand.tsx) */
+.mk-card {
+  fill: currentColor;
 }
-.halo-mark .core {
+.mk-front {
+  stroke: var(--mark-gap, var(--bg));
+}
+.mk-hole {
+  fill: var(--mark-gap, var(--bg));
+}
+.mk-core {
   fill: var(--green);
+}
+/* Grid and flex children may shrink below their content width (long account ids, form rows) on phones. */
+.match-layout > *,
+.agent-grid > *,
+.profile-grid > *,
+.agent-card,
+.agent-card > div {
+  min-width: 0;
+}
+.form-row > select {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+/* ---------- motion: entrance, scroll reveal, micro-interactions ---------- */
+:root {
+  --ease: cubic-bezier(0.65, 0, 0.35, 1);
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    translate: 0 18px;
+  }
+}
+@keyframes pop {
+  from {
+    scale: 0;
+  }
+}
+
+/* Entrance: logos develop out of the grain on a full-height hero, then everything settles. */
+.hero {
+  transition: min-height 1.5s var(--ease);
+}
+.hero.pre,
+.hero.develop {
+  min-height: 100svh;
+}
+html.intro .site-header {
+  transform: translateY(-100%);
+}
+html.intro.intro-settle .site-header {
+  transform: none;
+  transition: transform 1.5s var(--ease);
+}
+html.intro:not(.intro-settle) body {
+  overflow: hidden;
+}
+.halo {
+  translate: calc(var(--px, 0) * 16px) calc(var(--py, 0) * 12px);
+  transition:
+    opacity 1.1s ease,
+    scale 1.3s var(--spring),
+    rotate 1.5s var(--ease),
+    filter 1.2s ease,
+    translate 0.9s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.halo-b {
+  translate: calc(var(--px, 0) * -22px) calc(var(--py, 0) * -14px);
+}
+.hero.pre .halo {
+  opacity: 0;
+  scale: 0.5;
+  rotate: -40deg;
+  filter: blur(16px);
+}
+.halo-mark,
+.halo-chip {
+  transition:
+    scale 0.9s var(--spring),
+    rotate 0.9s var(--spring);
+}
+.hero.pre .halo-mark,
+.hero.pre .halo-chip {
+  scale: 0;
+  rotate: -25deg;
+}
+.hero.develop .halo-b {
+  transition-delay: 0.18s;
+}
+.hero.develop .halo-mark {
+  transition-delay: 0.45s;
+}
+.hero.develop .halo-chip {
+  transition-delay: 0.62s;
+}
+.hero h1 .line {
+  display: block;
+  overflow: hidden;
+  padding-bottom: 0.05em;
+}
+.hero h1 .line > span {
+  display: block;
+  transition: transform 1.05s var(--ease);
+}
+.hero h1 .line + .line > span {
+  transition-delay: 0.1s;
+}
+.hero.pre h1 .line > span,
+.hero.develop h1 .line > span {
+  transform: translateY(112%);
+}
+.hero .eyebrow {
+  transition: opacity 0.8s ease 0.25s;
+}
+.hero.pre .eyebrow,
+.hero.develop .eyebrow {
+  opacity: 0;
+}
+.lockup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 20px;
+  font: 600 15px var(--display);
+  letter-spacing: -0.02em;
+  transition:
+    opacity 0.7s ease 0.9s,
+    translate 0.7s ease 0.9s;
+}
+.lockup svg {
+  display: block;
+  --mark-gap: var(--bg);
+}
+.lockup .x {
+  font: 400 12px var(--mono);
+  color: var(--faint);
+}
+.lockup span:last-child {
+  font: 500 11.5px var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--green-text);
+}
+.hero.pre .lockup,
+.hero.develop .lockup {
+  opacity: 0;
+  translate: 0 8px;
+  transition: none;
+}
+.hero-sub.rise {
+  transition:
+    opacity 0.9s ease 0.35s,
+    translate 0.9s var(--ease) 0.35s;
+}
+html.intro:not(.intro-settle) .hero-sub.rise {
+  opacity: 0;
+  translate: 0 40px;
+}
+
+/* Scroll reveal (only when JS opted in, so content never hides without it). */
+html.js-reveal .reveal {
+  opacity: 0;
+  translate: 0 28px;
+  transition:
+    opacity 0.8s ease calc(var(--i, 0) * 90ms),
+    translate 0.9s var(--ease) calc(var(--i, 0) * 90ms);
+}
+html.js-reveal .reveal.in {
+  opacity: 1;
+  translate: none;
+}
+html.js-reveal .band.reveal .fl {
+  opacity: 0;
+}
+html.js-reveal .band.reveal.in .fl {
+  opacity: 1;
+  animation: rise 0.7s var(--ease) both;
+  animation-delay: calc(0.25s + var(--i, 0) * 80ms);
+}
+
+/* Micro-interactions */
+.step:hover {
+  border-color: var(--ink);
+  transform: translateY(-3px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.07);
+}
+.step-n {
+  transition: color 0.2s;
+}
+.step:hover .step-n {
+  color: var(--green-text);
+}
+.fl {
+  transition:
+    border-color 0.2s,
+    background 0.2s,
+    translate 0.2s;
+}
+.fl:hover {
+  border-color: var(--green);
+  background: rgba(28, 199, 68, 0.06);
+  translate: 0 -3px;
+}
+.stat-v {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Proof of result checklist: checks tick in one by one. */
+.checklist {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 9px;
+}
+.checklist li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 13.5px;
+  line-height: 1.45;
+  animation: rise 0.5s var(--ease) both;
+  animation-delay: calc(var(--n, 0) * 110ms);
+}
+.checklist i {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font: 600 11px var(--sans);
+  font-style: normal;
+  background: var(--rule);
+  color: var(--muted);
+}
+.checklist li.pass i {
+  background: var(--green);
+  color: #fff;
+  animation: pop 0.45s var(--spring) both;
+  animation-delay: calc(var(--n, 0) * 110ms + 0.15s);
+}
+.checklist li.fail i {
+  background: var(--red);
+  color: #fff;
+}
+.checklist li.fail {
+  color: var(--red-text);
+}
+.payout-lines {
+  margin-top: 14px;
+  border-top: 1px solid var(--rule);
+  padding-top: 12px;
+  display: grid;
+  gap: 6px;
+}
+.payout-lines small {
+  font: 400 11px var(--mono);
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+.payout-lines div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13.5px;
+}
+.payout-lines span {
+  font-family: var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero,
+  .halo,
+  .halo-mark,
+  .halo-chip,
+  .hero h1 .line > span,
+  .lockup,
+  .hero-sub.rise,
+  .step,
+  .fl {
+    transition: none;
+  }
+  .checklist li,
+  .checklist li.pass i,
+  .band.reveal .fl {
+    animation: none;
+  }
 }

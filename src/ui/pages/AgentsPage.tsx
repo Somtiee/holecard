@@ -3,6 +3,8 @@ import { Empty, PageTitle } from '../components/common';
 import { go } from '../lib/api';
 import { useArena } from '../lib/useArena';
 
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
 export function AgentsPage({ arena, onCreate }: { arena: ReturnType<typeof useArena>; onCreate: () => void }) {
   return (
     <main className="page">
@@ -29,9 +31,9 @@ export function AgentsPage({ arena, onCreate }: { arena: ReturnType<typeof useAr
                 <p>{a.description || 'Strategy profile ready for the arena.'}</p>
               </div>
               <div className="agent-card-foot">
-                <span>{a.tournaments || 0} tournaments</span>
+                <span>{plural(arena.leaders.find(r => r.id === a.id)?.tournaments ?? 0, 'tournament')}</span>
                 <span>
-                  {a.nearAccount} <ArrowUpRight size={14} />
+                  <em>{a.nearAccount}</em> <ArrowUpRight size={14} />
                 </span>
               </div>
             </button>

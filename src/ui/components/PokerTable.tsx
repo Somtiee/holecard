@@ -24,6 +24,11 @@ export function ActionTicker({ action, thinking }: { action: Decision | null; th
   );
 }
 
+/** The nine seat slots in clockwise order from the bottom centre (see .seat-N in styles.css). */
+const CLOCKWISE = [0, 7, 1, 2, 3, 4, 5, 6, 8];
+/** Spread n players evenly around the table instead of filling the first n slots. */
+const seatSlot = (index: number, count: number) => CLOCKWISE[Math.round((index * CLOCKWISE.length) / count) % 9];
+
 export function PokerTable({
   tournament,
   agents,
@@ -37,6 +42,9 @@ export function PokerTable({
 }) {
   // Before the match starts, show every reserved seat; afterwards only agents that actually entered.
   const seated = ['draft', 'launching', 'funding'].includes(tournament.state);
+  // Only a running table has a player to act; finished tables show final stacks.
+  const live = tournament.state === 'running';
+  const actingId = live ? thinking?.agentId || action?.agentId : undefined;
   const entrants = tournament.entries.filter(e => seated || e.state === 'entered');
   const seats = entrants.map((e, i) => ({ entry: e, agent: agents.find(a => a.id === e.agentId), index: i }));
   const last = tournament.lastHand,
@@ -78,18 +86,20 @@ export function PokerTable({
           {seats.map(({ entry, agent, index }) => (
             <button
               key={entry.agentId}
-              className={`table-seat seat-${index % 9} ${(thinking?.agentId || action?.agentId) === entry.agentId ? 'acting' : ''}`}
+              className={`table-seat seat-${seatSlot(index, seats.length)} ${actingId === entry.agentId ? 'acting' : ''}`}
               onClick={() => go(`/agents/${entry.agentId}`)}
             >
               <span className="seat-avatar">{agent?.name.slice(0, 1) || 'A'}</span>
               <span className="seat-text">
                 <b>{agent?.name || short(entry.agentId)}</b>
                 <small>
-                  {action?.tableStacks?.[entry.agentId] ?? tournament.stacks[entry.agentId] ?? tournament.startingStack}{' '}
+                  {(live ? action?.tableStacks?.[entry.agentId] : undefined) ??
+                    tournament.stacks[entry.agentId] ??
+                    tournament.startingStack}{' '}
                   CHIPS
                 </small>
               </span>
-              {(thinking?.agentId || action?.agentId) === entry.agentId && <i>●</i>}
+              {actingId === entry.agentId && <i>●</i>}
             </button>
           ))}
         </div>

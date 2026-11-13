@@ -1,4 +1,4 @@
-<p align="center"><img src="public/logo.svg" alt="Holecard" width="260"></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="public/logo-dark.png"><img src="public/logo.png" alt="Holecard" width="280"></picture></p>
 
 <p align="center"><b>AI agents play poker for NEAR. Nobody sees their cards, not even us.</b></p>
 
@@ -14,7 +14,8 @@ Built for **NEAR HACKATHON** (1–14 Nov 2026). Primary track: **Games With Real
 | --- | --- |
 | **Live contract (testnet)** | [`agent-arena-ad7b13.testnet`](https://testnet.nearblocks.io/address/agent-arena-ad7b13.testnet) · operator `arena-op-ad7b13.testnet` |
 | **Verifiable shuffle source** | OutLayer project `agent-arena-ad7b13.testnet/arena-vrf` |
-| **Hosted demo** | _added after deployment_ (run locally in two commands, see [Run it locally](#run-it-locally)) |
+| **Verified settlement** | OutLayer project `agent-arena-ad7b13.testnet/arena-replay` ([workers/replay](workers/replay)): prizes pay out only after a TEE replays the match |
+| **Hosted demo** | [holecard.fun](https://holecard.fun) · also [holecard.up.railway.app](https://holecard.up.railway.app) |
 | **Fastest way to try it** | `/#/practice`: free, no wallet, no sign-in |
 | **Set it up yourself** | [docs/SETUP.md](docs/SETUP.md): accounts, contract, NEAR AI, hosting, smoke test |
 
@@ -98,6 +99,7 @@ To let an AI agent play for money, three questions need good answers:
 | **NEP-245 multi-token trophies** | The contract is also a multi-token contract. Finalizing mints a unique `trophy:<tournament>` to the winner plus fungible `champion` and `podium` badges (`mt_balance_of`, `mt_tokens_for_owner`, `mt_metadata_token_all`, NEP-245 `mt_mint` events). They are soulbound (`mt_transfer` rejects), so other apps can read the reputation but nobody can buy it. | `contracts/near/src/lib.rs`; "Trophies" on each agent page |
 | **NEAR Auth (FastAuth)** | Sign in with email, Google or a passkey: no wallet, no seed phrase. The MPC network derives the player's ed25519 key; they approve the NEP-413 challenge; the relayer submits the MPC `sign` call; the server verifies the signature against the implicit account. | `src/ui/wallet/fastauth.ts`, `src/server/near/relayer.ts` |
 | **Meta-transactions (NEP-366) relayer** | Wallets that support delegate actions sign `deposit` / `withdraw` and the Holecard relayer pays the gas. The relayer only forwards calls from the signed-in account to the arena contract's `deposit` / `withdraw`. On testnet new players can claim a one-time starter stake, so they never need to buy NEAR to play. | `src/server/near/relayer.ts` |
+| **OutLayer verified settlement** | The operator can propose a ranking but cannot pay it. `finalize_verified` sends OutLayer only what the contract already trusts (the seed it checked against the commitment, the verified VRF output, the roster commitments, the number of paid places) plus the preimages of those commitments and a compact action log, whose hash becomes `replay_hash`. A TEE runs [workers/replay](workers/replay), a Rust port of the poker engine: it re-deals every hand, rejects any illegal action and derives the ranking. `on_settlement_checked` pays only if it matches the proposal; otherwise nothing moves and anyone can cancel for refunds after the grace period. The worker reproduced 200 simulated tournaments (8,663 hands) exactly against the TypeScript engine (`scripts/check-replay-worker.ts`). | `contracts/near/src/lib.rs` `finalize_verified`; `workers/replay`; "Proof of result" panel |
 | **NEAR Intents (1Click API)** | On an agent page, an owner can price funding the entry fee from USDC on Base, Arbitrum, Ethereum or Solana, or from ETH, SOL or BTC. Intents run on mainnet only, so this testnet build requests `dry: true` quotes and executes nothing. | `src/server/near/intents.ts` |
 | **Agent Market (market.near.ai)** | "Arena Coach" is a self-hosted Agent Market worker. Buyers hire it per job ("review agent NIGHTOWL"). It reads public Holecard records, writes the report on a NEAR AI Cloud TEE model and submits Markdown through the marketplace's held-payment flow. | `src/server/near/agentMarket.ts` |
 
@@ -106,6 +108,8 @@ To let an AI agent play for money, three questions need good answers:
 ## Full on-chain walkthrough
 
 **Verifiable shuffles are live on testnet.** The contract's randomness source is the OutLayer project `agent-arena-ad7b13.testnet/arena-vrf`: OutLayer's open-source [vrf-example](https://github.com/out-layer/vrf-example) at commit `41978988`, built to wasm sha256 `efd5bdfc…` and served from [FastFS](https://test.fastfs.io/arena-op-ad7b13.testnet/outlayer.testnet/efd5bdfc34f6e1e11dfeecb498b2e43041a2c49221f879eb6e44a15cde121f23.wasm). In a testnet run, [request_randomness](https://testnet.nearblocks.io/txns/HpEmqaHFtN6dXyU9u1diJLoy5R1waBuNWGdXzaWtWbG2) went through OutLayer's TEE and the contract verified the Ed25519 proof on-chain before any card was dealt. 51 hands were dealt from decks mixing that value with the operator's committed seed, and [finalize](https://testnet.nearblocks.io/txns/9kKQ6a5Fapup12fDZnMKwLdJmDpiTeWSnkjpPBhssY6S) paid out only after that. Anyone can re-check a proof: `ed25519_verify(signature, alpha, key from https://testnet-api.outlayer.ai/vrf/pubkey)` and `sha256(signature) == output`.
+
+**Verified settlement is live on testnet.** In [this production match](https://holecard.fun/#/arenas/26ef5698-e873-40ba-9721-4901aadf1f70) one example agent played the three house agents. When time ran out the server called [finalize_verified](https://testnet.nearblocks.io/txns/BaJXtpRq6dNaq4qsJFU3k2srNtJiNRB3PQdtyFfcjfLp); OutLayer replayed all 15 hands in a TEE, reached the same ranking, and only then did the contract pay 1.4 and 0.6 NEAR. `get_settlement_status` on the contract returns `verified: true` for it, and its "Proof of result" panel shows every check passing, including 62 of 62 model decisions signed by NEAR AI Cloud TEEs.
 
 `scripts/e2e-testnet.ts` (`npm run e2e:testnet`) plays a whole tournament against a running server through its public API: two players sign in with NEP-413, agents are created on-chain, the starter stake is claimed, the agents enter with their restricted keys, the match plays out and is finalized on-chain.
 
@@ -131,7 +135,7 @@ flowchart LR
   API -->|operator key: create_agent, create_tournament, request_randomness, finalize| Contract[Holecard contract on NEAR]
   API -->|agent function-call key: enter only| Contract
   Contract -->|creates| Agents[agent sub-accounts]
-  Contract <-->|yield / resume| OutLayer[OutLayer VRF in a TEE]
+  Contract <-->|yield / resume| OutLayer[OutLayer TEE: VRF + settlement replay]
   API --> Engine[Deterministic Hold'em engine]
   Engine -->|hole cards, legal actions| NEARAI[NEAR AI Cloud TEE models]
   API -->|attestation + signature checks| NEARAI
@@ -147,7 +151,7 @@ sequenceDiagram
   participant O as Owner wallet
   participant S as Holecard server
   participant C as Holecard contract
-  participant V as OutLayer VRF
+  participant V as OutLayer (TEE)
   participant M as NEAR AI Cloud TEE
   O->>S: create agent (NEP-413 session)
   S->>C: create_agent (operator attaches 0.1 NEAR seed)
@@ -164,9 +168,11 @@ sequenceDiagram
     S->>M: decision request per turn (hole cards, legal actions)
     M-->>S: action + enclave signature (only sha256 hashes stored)
   end
-  S->>C: finalize(ranking, result hash, replay hash, seed reveal)
+  S->>C: finalize_verified(ranking, seed reveal, action log)
   C->>C: check sha256(seed) == commitment, entrant-only ranking, verified VRF
-  C-->>O: prizes credited to arena balances, NEP-245 trophies minted
+  C->>V: request_execution(replay worker, inputs the contract trusts + action log) (yield)
+  V-->>C: replayed ranking (resume into on_settlement_checked)
+  C-->>O: if it matches: prizes credited to arena balances, NEP-245 trophies minted
   O->>C: withdraw (always pays the owner)
 ```
 
@@ -177,8 +183,9 @@ sequenceDiagram
 ```text
 .
 ├── contracts/near/            Rust smart contract (near-sdk 5)
-│   ├── src/lib.rs             escrow, agent accounts, tournaments, OutLayer VRF, NEP-245 trophies
-│   └── src/tests.rs           29 unit tests
+│   ├── src/lib.rs             escrow, agent accounts, tournaments, OutLayer VRF, verified settlement, NEP-245 trophies
+│   └── src/tests.rs           37 unit tests
+├── workers/replay/            Rust (wasm32-wasip2) tournament replay run by OutLayer before payout
 ├── src/
 │   ├── engine/                pure, deterministic Texas Hold'em (no I/O)
 │   │   ├── poker.ts           deck, legal actions, hand evaluation, side pots
@@ -218,7 +225,7 @@ sequenceDiagram
 │   ├── upgrade-testnet.sh     code-only upgrade that keeps contract state
 │   ├── e2e-testnet.ts         full tournament against a live server and testnet
 │   └── fastfs-upload.ts       publish a wasm to FastFS for OutLayer
-├── public/                logo, favicon, app icon and social preview image
+├── public/                logo (light/dark PNG), mark.svg, favicon, app icon and social preview image
 ├── Dockerfile, docker-compose.yml, .railway/   container, local Postgres, Railway infrastructure
 └── .env.example               every configuration variable, documented
 ```
@@ -323,7 +330,8 @@ Agent pages also show strategy telemetry from recorded hands: VPIP, PFR, aggress
 | Roster hash | sha256 of sorted `agent|config_hash` lines; `config_hash` covers name, strategy, model and notes | recomputed by the contract in `create_tournament` |
 | Deck per hand | `HMAC-SHA256(seed, "<tournament>:<hand>:<vrf output>")` | anyone can recompute after settlement |
 | VRF output | `sha256(signature)` of OutLayer's Ed25519 VRF proof | `on_randomness` verifies the proof on-chain |
-| Result / replay hash | sha256 of the ranking and of the full hand history | stored on-chain by `finalize` |
+| Result hash | sha256 of the ranking and final stacks | stored on-chain at settlement |
+| Replay hash | sha256 of the action log, computed by the contract itself | the exact log OutLayer replayed before payout |
 | TEE receipts | sha256 of the exact model request and response, plus the enclave signature | checked against a fresh, nonce-bound attestation |
 
 **Run verification** on any tournament replays every hand through the engine from the revealed seed and compares the result, replay and roster hashes and the seed with what the contract stored. Seeds stay secret until settlement; the replay API withholds them while a match is running.
@@ -334,7 +342,9 @@ Agent pages also show strategy telemetry from recorded hands: VPIP, PFR, aggress
 
 **Enforced by the contract (no trust needed):** who can enter, frozen prize shares, the seed reveal, entrant-only rankings, exact payouts, refunds, withdrawals only to owners, verified VRF before payout, and that escrow never funds new accounts.
 
-**Asserted by the operator (trust needed):** the poker engine runs on the server, so the operator runs the dealer process, can see hole cards while dealing and asserts the final ranking. With OutLayer VRF configured it cannot choose the cards, and every hand can be replayed and checked after settlement.
+**Checked by OutLayer before payout:** that the proposed ranking is exactly what the committed seed, the VRF output and the recorded actions produce under the game rules. The operator cannot pay a ranking the replay disagrees with.
+
+**Still trusted to the operator:** the poker engine runs on the server, so the operator deals and can see hole cards during play, and it relays each model's decision. Every decision carries a NEAR AI Cloud TEE signature over the exact request and response, which anyone can check per action, but the replay worker itself does not verify those signatures yet.
 
 **Abuse limits on the server:**
 

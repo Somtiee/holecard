@@ -37,6 +37,7 @@ import {
   decisionNotes,
   tickArena,
   verifyMatch,
+  settlementVerifier,
 } from './arena/service';
 import { publicAgent } from './types';
 import { PRACTICE_STRATEGIES, runPractice } from './arena/practice';
@@ -125,13 +126,19 @@ app.get(
 );
 // Every client polls /api/health; one contract read per 10 s is plenty.
 let contractConfigCache: { at: number; value: Promise<Record<string, unknown>> } | null = null;
+// Stale-while-revalidate: testnet RPC views can take seconds, so serve the last value and refresh behind it.
+let contractConfigLoading: Promise<unknown> | null = null;
 const contractConfig = () => {
-  if (!contractConfigCache || Date.now() - contractConfigCache.at > 10_000)
-    contractConfigCache = {
-      at: Date.now(),
-      value: view<Record<string, unknown>>('get_config').catch(error => ({ error: (error as Error).message })),
-    };
-  return contractConfigCache.value;
+  const stale = !contractConfigCache || Date.now() - contractConfigCache.at > 15_000;
+  if (stale && !contractConfigLoading) {
+    const next = view<Record<string, unknown>>('get_config').catch(error => ({ error: (error as Error).message }));
+    contractConfigLoading = next.then(() => {
+      contractConfigCache = { at: Date.now(), value: next };
+      contractConfigLoading = null;
+    });
+    if (!contractConfigCache) contractConfigCache = { at: 0, value: next };
+  }
+  return contractConfigCache!.value;
 };
 app.get(
   '/api/health',
@@ -147,12 +154,13 @@ app.get(
       decisionPolicy: decisionMode(),
       tournamentLaunchReady: nearConfigured() && (decisionMode() === 'fixture' || nearAiConfigured()),
       agentMarket: agentMarketStatus(),
-      operatorTrust:
-        'Poker results are operator asserted; the NEAR contract escrows entry fees, checks the seed reveal and pays the frozen shares.',
+      operatorTrust: (await settlementVerifier())
+        ? 'The operator proposes results; the NEAR contract pays only after an OutLayer TEE replays the match and reaches the same ranking. It also escrows entry fees, checks the seed reveal and pays the frozen shares.'
+        : 'Poker results are operator asserted; the NEAR contract escrows entry fees, checks the seed reveal and pays the frozen shares.',
     });
   }),
 );
-app.get('/api/config', (_req, res) =>
+app.get('/api/config', async (_req, res) =>
   res.json({
     network: NEAR_NETWORK,
     rpcUrl: NEAR_RPC_URL,
@@ -163,6 +171,7 @@ app.get('/api/config', (_req, res) =>
     decisionPolicy: decisionMode(),
     nearAiReady: nearAiConfigured(),
     nearReady: nearConfigured(),
+    settlementVerifier: (await settlementVerifier())?.project_id ?? null,
     fundingSources: FUNDING_SOURCES.map(({ id, label }) => ({ id, label })),
     fastAuth: {
       contractId: FASTAUTH_CONTRACT,

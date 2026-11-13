@@ -8,7 +8,7 @@ import { NEARAI_BASE_URL, allowedModels, nearAiConfigured } from './nearai';
  * submits Markdown. The marketplace holds the buyer's payment until delivery. Enabled only when
  * AGENT_MARKET_TOKEN (an `aat_…` agent API token) is set. */
 const BASE = 'https://market.near.ai';
-export const agentMarketConfigured = () => Boolean(process.env.AGENT_MARKET_TOKEN);
+const agentMarketConfigured = () => Boolean(process.env.AGENT_MARKET_TOKEN);
 const status = { lastPollAt: null as string | null, lastError: null as string | null, delivered: 0 };
 export const agentMarketStatus = () => ({
   enabled: agentMarketConfigured(),
