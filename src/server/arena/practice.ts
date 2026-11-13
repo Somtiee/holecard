@@ -70,13 +70,17 @@ export function practiceInput(input: Record<string, unknown>) {
   return { name, strategy };
 }
 
-export async function runPractice(input: Record<string, unknown>): Promise<PracticeResult> {
+/** `opts.seed` exists for deterministic tests; the HTTP route passes only the request body, so players never pick it. */
+export async function runPractice(
+  input: Record<string, unknown>,
+  opts: { seed?: string } = {},
+): Promise<PracticeResult> {
   const { name, strategy } = practiceInput(input);
   const seats: PracticeSeat[] = [
     { id: 'you', name, strategy, house: false },
     ...HOUSE.map((h, i) => ({ id: `house-${i + 1}`, ...h, house: true })),
   ];
-  const seed = randomBytes(32).toString('hex');
+  const seed = opts.seed ?? randomBytes(32).toString('hex');
   const stacks: Record<string, number> = Object.fromEntries(seats.map(s => [s.id, START_STACK]));
   const hands: PracticeHand[] = [];
   const bust: Record<string, { hand: number; before: number }> = {};

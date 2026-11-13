@@ -16,7 +16,8 @@ const run = (seed: number, provider = fixtureDecision) =>
     smallBlind: 10,
     bigBlind: 20,
     provider,
-    timeoutMs: 20,
+    // Generous: the fixture provider answers at once, and a stall must never turn a decision into a timeout fold.
+    timeoutMs: 1000,
     now: (() => {
       let n = 100;
       return () => n++;

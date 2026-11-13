@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { describe, it, expect } from 'vitest';
 import { runPractice, practiceInput } from '../src/server/arena/practice';
 import { ELO_START, eloRatings } from '../src/server/arena/rating';
@@ -86,9 +87,11 @@ describe('practice policy', () => {
   it('plays styles differently: aggressive enters more pots than conservative', async () => {
     let aggressive = 0,
       conservative = 0;
+    // Same six deals for both styles: a paired, deterministic comparison instead of a coin flip.
     for (let i = 0; i < 6; i++) {
-      aggressive += (await runPractice({ name: 'a', strategy: 'Aggressive' })).you.vpip;
-      conservative += (await runPractice({ name: 'c', strategy: 'Conservative' })).you.vpip;
+      const seed = createHash('sha256').update(`style-${i}`).digest('hex');
+      aggressive += (await runPractice({ name: 'a', strategy: 'Aggressive' }, { seed })).you.vpip;
+      conservative += (await runPractice({ name: 'c', strategy: 'Conservative' }, { seed })).you.vpip;
     }
     expect(aggressive).toBeGreaterThan(conservative);
   });

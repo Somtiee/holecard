@@ -1,6 +1,6 @@
 <p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="public/logo-dark.png"><img src="public/logo.png" alt="Holecard" width="280"></picture></p>
 
-<p align="center"><b>AI agents play poker for NEAR. Nobody sees their cards, not even us.</b></p>
+<p align="center"><b>AI agents play poker for NEAR. Every move is decided privately in a TEE, every shuffle is proven on-chain, and no prize is paid until the match is replayed.</b></p>
 
 ![Holecard: nobody sees their cards](docs/holecard-preview.png)
 
@@ -205,12 +205,13 @@ sequenceDiagram
 │   ├── engine/                pure, deterministic Texas Hold'em (no I/O)
 │   │   ├── poker.ts           deck, legal actions, hand evaluation, side pots
 │   │   ├── hand.ts            full-hand runner, decision timeouts, fixture policy
-│   │   └── policy.ts          simulation-based rules player (fast 7-card evaluator, Monte Carlo equity, styles)
+│   │   ├── policy.ts          simulation-based rules player (fast 7-card evaluator, Monte Carlo equity, styles)
+│   │   └── ranking.ts         final ranking (survivors by stack, busted players by bust order) and the compact action log
 │   ├── server/                Express 5 + WebSocket API
 │   │   ├── index.ts           HTTP routes, rate limits, origin check, WebSocket feed, scheduler tick
 │   │   ├── env.ts             loads .env
 │   │   ├── db.ts              Postgres pool and idempotent migrations
-│   │   ├── auth.ts            NEP-413 challenge / verify, session cookies
+│   │   ├── auth.ts            NEP-413 and NEAR Auth sign-in, single-use challenges, session cookies
 │   │   ├── types.ts           database row types and public serializers
 │   │   ├── arena/             game logic
 │   │   │   ├── service.ts     agents, tournaments, hand loop, finalize, leaderboard, analytics
@@ -222,24 +223,28 @@ sequenceDiagram
 │   │   └── near/              every NEAR integration
 │   │       ├── chain.ts       RPC, operator signer, key vault, NEP-413 verification, formatting
 │   │       ├── nearai.ts      NEAR AI Cloud decisions, attestation and receipt checks
-│   │       ├── relayer.ts     NEP-366 relayer, NEAR Auth signing, starter stakes
+│   │       ├── relayer.ts     NEP-366 relayer, NEAR Auth signing relay, starter stakes
+│   │       ├── fastauth.ts    NEAR Auth sign-in proof check and callback allowlist detection
 │   │       ├── intents.ts     NEAR Intents 1Click dry quotes
 │   │       └── agentMarket.ts Agent Market "Arena Coach" worker
 │   ├── ui/                    React 19 single-page app
 │   │   ├── App.tsx            shell: header, routing, sign-in, footer
 │   │   ├── styles.css         design system
-│   │   ├── lib/               API client and types, live data hook (polling + WebSocket)
-│   │   ├── components/        brand, poker table, cards, leaderboard, NEAR panels, create dialogs
+│   │   ├── lib/               API client and types, live data hook (polling + WebSocket), motion (intro, reveal, count-up)
+│   │   ├── components/        brand, living-ink hero (InkMarks), poker table, cards, leaderboard, NEAR panels, create dialogs
 │   │   ├── pages/             home, practice, arenas, tournament, agents, agent, leaderboard, on NEAR
 │   │   └── wallet/            NEAR Connect and NEAR Auth clients
 │   └── main.tsx               React entry point
 ├── docs/SETUP.md              step-by-step deployment guide
-├── tests/                     vitest suites (engine, policy, NEAR crypto, relayer, practice, house, API)
+├── tests/                     vitest suites (engine, policy, ranking, NEAR crypto, NEAR Auth, relayer, practice, house, API)
 ├── scripts/
 │   ├── deploy-testnet.sh      build + deploy + init the contract, optional VRF source
 │   ├── upgrade-testnet.sh     code-only upgrade that keeps contract state
 │   ├── e2e-testnet.ts         full tournament against a live server and testnet
-│   └── fastfs-upload.ts       publish a wasm to FastFS for OutLayer
+│   ├── fastfs-upload.ts       publish a wasm to FastFS for OutLayer
+│   ├── check-replay-worker.ts differential test: the Rust replay worker against the TypeScript engine
+│   ├── seed-showcase.ts       play a showcase match against the house agents on a live server
+│   └── rotate-operator-key.ts rotate the operator's full-access key without printing private keys
 ├── public/                logo (light/dark PNG), mark.svg, favicon, app icon and social preview image
 ├── Dockerfile, docker-compose.yml, .railway/   container, local Postgres, Railway infrastructure
 └── .env.example               every configuration variable, documented
@@ -361,11 +366,14 @@ Agent pages also show strategy telemetry from recorded hands: VPIP, PFR, aggress
 
 **Still trusted to the operator:** the poker engine runs on the server, so the operator deals and can see hole cards during play, and it relays each model's decision. Every decision carries a NEAR AI Cloud TEE signature over the exact request and response, which anyone can check per action, but the replay worker itself does not verify those signatures yet.
 
+**Still trusted to the contract owner:** the contract account's own full-access key can upgrade the contract code and change the VRF source and the settlement verifier (the operator key cannot). On this testnet deployment the Holecard team holds that key; a production deployment would hand it to a DAO or lock the contract by deleting it.
+
 **Abuse limits on the server:**
 
-- State-changing requests must come from `PUBLIC_ORIGIN` (CSRF protection); sessions are HttpOnly cookies.
+- State-changing requests must come from `PUBLIC_ORIGIN` (CSRF protection); sessions are HttpOnly, SameSite=Strict cookies.
+- Security headers on every response: no framing (`X-Frame-Options: DENY`, `frame-ancestors 'none'`), `nosniff`, a strict referrer policy and HSTS over HTTPS.
 - Per-IP rate limits (10/min) on sign-in challenges, quotes, relays, Agent Market previews and practice games; `TRUST_PROXY` makes them see real client IPs behind a proxy.
-- Caps on new agent accounts per hour (`AGENT_CREATE_HOURLY_CAP`) and starter stakes per day (`SPONSOR_DAILY_CAP`).
+- Caps on new agent accounts per hour (`AGENT_CREATE_HOURLY_CAP`), starter stakes per day (`SPONSOR_DAILY_CAP`) and NEAR Auth signing relays per hour (`FASTAUTH_RELAY_HOURLY_CAP`, 120); starter stakes also pause before the operator balance falls below `OPERATOR_RESERVE_NEAR`.
 - Agent function-call keys are encrypted at rest with `AGENT_KEY_SECRET`.
 - The relayer only forwards `deposit` / `withdraw` delegate actions from the signed-in account to the arena contract.
 - Every chain operation is recorded idempotently in `chain_ops`, so retries never double-send.
@@ -496,6 +504,7 @@ It runs the contract tests, builds, deploys without an init call and checks that
 | `tests/hand.test.ts` | replays from the seed, chip conservation, legal-action validation, timeouts and illegal answers, hidden cards never reaching providers or public records |
 | `tests/audit-regressions.test.ts` | minimum-raise rules, short all-in not reopening raises, null provider answers, full 256-bit seed use, 250 adversarial action sequences with uneven stacks |
 | `tests/near.test.ts` | NEP-413 hashing and signatures, agent key vault, commitments shared with the contract |
+| `tests/ranking.test.ts` | final ranking by stack and bust order (not by id), compact action log |
 | `tests/relayer.test.ts` | delegate-action checks and NEAR Auth implicit accounts |
 | `tests/fastauth.test.ts` | NEAR Auth sign-in proofs: valid signatures accepted; another challenge, site or contract, an executable transaction, another key or another sign-in's signature rejected |
 | `tests/practice.test.ts` | practice games conserve chips and explain every decision; input validation; Elo behaviour; the fast evaluator matches the engine on 3,000 random pairs; styles play differently |

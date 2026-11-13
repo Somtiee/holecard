@@ -84,6 +84,16 @@ function broadcast(event: string, data: unknown) {
   for (const ws of wss.clients) if (ws.readyState === WebSocket.OPEN) ws.send(payload);
 }
 const secure = origin.startsWith('https://');
+// Security headers: no framing (the sign-in, deposit and withdraw buttons must not be clickjackable), no MIME
+// sniffing, no full-URL referrers, and HTTPS pinned once the site is served over TLS.
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  if (secure) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
+  next();
+});
 const requestCounts = new Map<string, { count: number; until: number }>();
 const limited = new Set([
   '/api/auth/challenge',

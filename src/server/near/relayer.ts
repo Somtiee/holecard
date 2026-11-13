@@ -46,6 +46,18 @@ export async function relayDelegate(signedDelegateBase64: string, sessionAccount
 
 /** NEAR Auth (FastAuth) message signing: the MPC `sign` call must be sent by a funded account. */
 export const FASTAUTH_CONTRACT = process.env.FASTAUTH_CONTRACT_ID || 'fast-auth.testnet';
+// The sign relay must work before sign-in, so it cannot require a session. Any NEAR Auth user could otherwise route
+// their own MPC signing through it at the operator's expense; cap it arena-wide on top of the per-IP limit.
+const fastAuthRelays: number[] = [];
+function takeFastAuthRelaySlot() {
+  const cap = Number(process.env.FASTAUTH_RELAY_HOURLY_CAP || 120),
+    hourAgo = Date.now() - 3_600_000;
+  while (fastAuthRelays.length && fastAuthRelays[0] < hourAgo) fastAuthRelays.shift();
+  if (fastAuthRelays.length >= cap)
+    throw new Error('NEAR Auth sign-in is busy right now. Try again later or sign in with a NEAR wallet.');
+  fastAuthRelays.push(Date.now());
+}
+
 export async function relayFastAuthSign(input: {
   methodName?: unknown;
   argsBase64?: unknown;
@@ -57,6 +69,7 @@ export async function relayFastAuthSign(input: {
   const gas = BigInt(String(input.gas || '300000000000000')),
     deposit = BigInt(String(input.deposit || '1'));
   if (gas > 300_000_000_000_000n || deposit > 1n) throw new Error('Relayer limits: 300 Tgas, 1 yoctoNEAR');
+  takeFastAuthRelaySlot();
   const args = Buffer.from(input.argsBase64, 'base64');
   const sent = await relayerSend(FASTAUTH_CONTRACT, [actions.functionCall('sign', args, gas, deposit)]);
   return { txHash: sent.txHash, successValue: sent.successValue };
