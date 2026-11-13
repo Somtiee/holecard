@@ -22,15 +22,25 @@ export function useIntro() {
     }
     const root = document.documentElement;
     root.classList.add('intro');
-    const raf = requestAnimationFrame(() => requestAnimationFrame(() => setPhase('develop')));
-    const t1 = setTimeout(() => {
-      setPhase('settle');
-      root.classList.add('intro-settle');
-    }, 1150);
-    const t2 = setTimeout(() => {
-      setPhase('');
-      root.classList.remove('intro', 'intro-settle');
-    }, 2900);
+    // The timers start from the first painted frame. A tab opened in the background gets no frames
+    // until it is shown, so the intro waits for the viewer instead of finishing unseen and then
+    // being rewound by a late frame (which left the headline hidden).
+    let raf = 0,
+      t1 = 0,
+      t2 = 0;
+    raf = requestAnimationFrame(() => {
+      raf = requestAnimationFrame(() => {
+        setPhase('develop');
+        t1 = window.setTimeout(() => {
+          setPhase('settle');
+          root.classList.add('intro-settle');
+        }, 1150);
+        t2 = window.setTimeout(() => {
+          setPhase('');
+          root.classList.remove('intro', 'intro-settle');
+        }, 2900);
+      });
+    });
     return () => {
       cancelAnimationFrame(raf);
       clearTimeout(t1);

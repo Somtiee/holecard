@@ -3711,3 +3711,16 @@ html.js-reveal .band.reveal.in .fl {
     animation: none;
   }
 }
+
+/* Living ink: the hero logos rendered as grain particles (components/InkMarks.tsx).
+   The SVG mark and the CSS chip stay underneath as the fallback for reduced motion or no canvas. */
+.ink-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.hero-art.ink .halo-mark,
+.hero-art.ink .halo-chip {
+  visibility: hidden;
+}

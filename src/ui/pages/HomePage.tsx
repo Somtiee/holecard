@@ -1,6 +1,8 @@
+import { useCallback, useState } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { ArenaCard } from '../components/ArenaCard';
 import { contractLive, Mark } from '../components/Brand';
+import { InkMarks } from '../components/InkMarks';
 import { Leaderboard } from '../components/Leaderboard';
 import { ActionTicker, PokerTable } from '../components/PokerTable';
 import { Empty, SectionHead } from '../components/common';
@@ -37,17 +39,20 @@ export function HomePage({
     running = arena.tournaments.filter(t => t.state === 'running').length,
     ok = contractLive(arena.health);
   const phase = useIntro();
+  const [ink, setInk] = useState(false);
+  const onInk = useCallback((on: boolean) => setInk(on), []);
   useReveal([arena.tournaments.length, arena.leaders.length, Boolean(live)]);
   return (
     <>
       <header className={`hero ${phase}`} onPointerMove={parallax}>
-        <div className="hero-art" aria-hidden="true">
+        <div className={`hero-art${ink ? ' ink' : ''}`} aria-hidden="true">
           <div className="halo halo-a">
             <Mark className="halo-mark" size={160} />
           </div>
           <div className="halo halo-b">
             <span className="halo-chip" />
           </div>
+          <InkMarks intro={phase === 'pre' || phase === 'develop'} onReady={onInk} />
         </div>
         <div className="hero-content">
           <div className="wrap">
