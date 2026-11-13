@@ -38,6 +38,8 @@ export default function App() {
   }, [toast]);
   const network = arena.config?.network || 'testnet';
   const [signIn, setSignIn] = useState(false);
+  // Email, Google and passkey sign-in need a NEAR Auth client registered for this domain.
+  const socialReady = Boolean(arena.config?.fastAuth?.clientId) || location.origin === 'http://localhost:3000';
   const connectSocial = async () => {
     setSignIn(false);
     try {
@@ -151,7 +153,10 @@ export default function App() {
           <div className="header-right">
             <Status health={arena.health} network={arena.config?.network} />
             <span className="signin-wrap">
-              <button className="connect-button" onClick={() => (arena.owner ? void logout() : setSignIn(!signIn))}>
+              <button
+                className="connect-button"
+                onClick={() => (arena.owner ? void logout() : socialReady ? setSignIn(!signIn) : void connect())}
+              >
                 {arena.owner ? (
                   <>
                     <Wallet size={14} />
@@ -161,19 +166,14 @@ export default function App() {
                   'sign_in'
                 )}
               </button>
-              {signIn && !arena.owner && (
+              {signIn && socialReady && !arena.owner && (
                 <span className="signin-menu">
                   <button
-                    disabled={!arena.config?.fastAuth?.clientId && location.origin !== 'http://localhost:3000'}
                     title="Email, Google and passkey sign-in through NEAR Auth"
                     onClick={() => void connectSocial()}
                   >
                     Email · Google · Passkey
-                    <small>
-                      {!arena.config?.fastAuth?.clientId && location.origin !== 'http://localhost:3000'
-                        ? 'Coming soon on this domain · use a wallet'
-                        : 'NEAR Auth · no wallet, no gas'}
-                    </small>
+                    <small>NEAR Auth · no wallet, no gas</small>
                   </button>
                   <button onClick={() => void connect()}>
                     NEAR wallet<small>Meteor, Intear, Nightly, Ledger…</small>

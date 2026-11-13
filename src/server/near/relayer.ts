@@ -1,6 +1,6 @@
 import { SCHEMA, actions } from 'near-api-js';
 import { deserialize } from 'borsh';
-import { contractId, relayerSend } from './chain';
+import { contractId, operatorBalance, parseNear, relayerSend } from './chain';
 import { pool } from '../db';
 
 /** NEP-366 meta-transaction relayer. Players sign a DelegateAction; the arena pays the gas.
@@ -73,6 +73,11 @@ export async function sponsorAgent(
     : 0n;
   if (amount <= 0n || process.env.NEAR_NETWORK === 'mainnet')
     throw new Error('Starter stake is not offered on this arena');
+  // The operator also pays for agent accounts, VRF requests, verified settlements and house-agent entries.
+  // Never let starter stakes eat into that reserve, or matches start failing for everyone.
+  const reserve = parseNear(process.env.OPERATOR_RESERVE_NEAR || '3');
+  if ((await operatorBalance()) - amount < reserve)
+    throw new Error('Starter stakes are paused while the arena tops up. Deposit testnet NEAR to this agent instead.');
   // Implicit-account sign-ins cost nothing to create, so "once per owner" alone does not bound the operator's spend.
   const today = await pool.query<{ n: string }>(
     `SELECT count(*)::text AS n FROM sponsorships WHERE created_at>now()-interval '1 day'`,

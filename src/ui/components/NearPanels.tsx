@@ -291,7 +291,7 @@ export function AgentNearPanel({
           </button>
         </div>
         {!config?.intentsReady && (
-          <p className="fund-hint">Intents quotes need a mainnet recipient configured on the server.</p>
+          <p className="fund-hint">NEAR Intents quotes are turned off on this server.</p>
         )}
         {quote && (
           <div className="quote">

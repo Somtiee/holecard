@@ -54,7 +54,7 @@ import {
   view,
 } from './near/chain';
 import { allowedModels, attestModel, nearAiConfigured } from './near/nearai';
-import { FUNDING_SOURCES, fundingQuote } from './near/intents';
+import { FUNDING_SOURCES, fundingQuote, intentsEnabled } from './near/intents';
 import { agentMarketStatus, coachReport, pollAgentMarket } from './near/agentMarket';
 import { FASTAUTH_CONTRACT, relayDelegate, relayFastAuthSign, sponsorAgent } from './near/relayer';
 
@@ -179,7 +179,7 @@ app.get('/api/config', async (_req, res) =>
       clientId: process.env.FASTAUTH_CLIENT_ID || null,
     },
     sponsorNear: NEAR_NETWORK === 'testnet' ? Number(process.env.SPONSOR_NEAR || 0) : 0,
-    intentsReady: Boolean(process.env.INTENTS_QUOTE_RECIPIENT),
+    intentsReady: intentsEnabled(),
     agentMarket: agentMarketStatus(),
     house: {
       enabled: houseEnabled(),

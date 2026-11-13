@@ -34,11 +34,17 @@ export const FUNDING_SOURCES = [
 ] as const;
 const WNEAR = 'nep141:wrap.near';
 
+/** A dry quote moves nothing and issues no deposit address, but 1Click still requires a valid mainnet
+ * recipient. Unless one is configured, quote to the NEAR Intents verifier contract itself, so no
+ * personal account is ever named. Set INTENTS_QUOTES=off to hide the feature. */
+export const quoteRecipient = () => process.env.INTENTS_QUOTE_RECIPIENT || 'intents.near';
+export const intentsEnabled = () => process.env.INTENTS_QUOTES !== 'off';
+
 export async function fundingQuote(input: { source: unknown; amountYocto: string }) {
   const source = FUNDING_SOURCES.find(s => s.id === input.source);
   if (!source) throw new Error('Unsupported funding source');
-  const recipient = process.env.INTENTS_QUOTE_RECIPIENT;
-  if (!recipient) throw new Error('Set INTENTS_QUOTE_RECIPIENT to a mainnet NEAR account to request Intents quotes');
+  if (!intentsEnabled()) throw new Error('NEAR Intents quotes are turned off on this server');
+  const recipient = quoteRecipient();
   if (!/^\d{1,40}$/.test(input.amountYocto) || BigInt(input.amountYocto) <= 0n) throw new Error('Invalid quote amount');
   const body = {
     dry: true,

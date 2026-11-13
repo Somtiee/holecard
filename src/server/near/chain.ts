@@ -186,6 +186,7 @@ export async function accountBalance(accountId: string) {
   const state = await provider.viewAccount({ accountId, blockQuery: { finality: 'final' } });
   return String(state.amount);
 }
+export const operatorBalance = async () => BigInt(await accountBalance(operatorId()));
 
 // ---------- NEP-413 sign-in verification ----------
 

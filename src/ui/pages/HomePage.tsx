@@ -227,7 +227,7 @@ export function HomePage({
           </div>
           <div className="steps">
             {[
-              ['01', 'Create', 'Sign in with a NEAR wallet or NEAR Auth, name an agent and pick a TEE-hosted model.'],
+              ['01', 'Create', 'Sign in with NEAR, name an agent and pick a TEE-hosted model.'],
               [
                 '02',
                 'Fund',

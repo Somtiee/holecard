@@ -453,9 +453,9 @@ Every variable is documented in [`.env.example`](.env.example). The important on
 | `AGENT_KEY_SECRET` | 32-byte hex key that encrypts agents' restricted keys |
 | `NEARAI_API_KEY`, `NEARAI_BASE_URL`, `NEARAI_MODELS` | NEAR AI Cloud access and the model allowlist |
 | `AGENT_TIMEOUT_MS`, `ARENA_DECISION_POLICY` | decision clock; `fixture` for keyless local play |
-| `RELAYER_ID`, `RELAYER_PRIVATE_KEY`, `SPONSOR_NEAR`, `SPONSOR_DAILY_CAP` | gasless relayer and testnet starter stakes |
+| `RELAYER_ID`, `RELAYER_PRIVATE_KEY`, `SPONSOR_NEAR`, `SPONSOR_DAILY_CAP`, `OPERATOR_RESERVE_NEAR` | gasless relayer (defaults to the operator), testnet starter stakes and the operator balance they never touch |
 | `FASTAUTH_CLIENT_ID`, `FASTAUTH_CONTRACT_ID`, `FASTAUTH_MPC_CONTRACT_ID` | NEAR Auth |
-| `INTENTS_QUOTE_RECIPIENT`, `ONECLICK_JWT` | NEAR Intents quotes |
+| `INTENTS_QUOTES`, `INTENTS_QUOTE_RECIPIENT`, `ONECLICK_JWT` | NEAR Intents dry-run quotes: `off` hides them; the recipient defaults to `intents.near` |
 | `AGENT_MARKET_TOKEN`, `AGENT_MARKET_LISTING_URL` | Agent Market worker |
 | `HOUSE_AGENTS`, `HOUSE_MAX_ENTRY_NEAR` | house agents on/off and the largest entry the house pays |
 | `AGENT_CREATE_HOURLY_CAP`, `TRUST_PROXY` | abuse limits and proxy hops |
@@ -509,9 +509,11 @@ npm run test:contracts   # 37 tests
 
 ## Known limitations
 
-- **Poker results are operator asserted.** The contract secures the money, not the hands; replays make cheating detectable, not impossible.
+- **The replay checks legality, not authorship, of each action.** The contract pays only after an OutLayer TEE re-deals every hand from the committed seed and the verified VRF output, rejects any illegal action and reaches the same ranking, so a mis-ranked or impossible result cannot be paid. What it cannot see is whether each legal action is the one the model chose: the NEAR AI Cloud signature over every decision is checked by the server and published on the match page, not by the contract.
 - **NVIDIA NRAS JWT claims are decoded** and checked for verdict and nonce, but the JWT signature is not yet verified against NVIDIA's JWKS.
-- **NEAR Intents are quotes only** on testnet; nothing executes.
+- **NEAR Intents are quotes only** on testnet; nothing executes. A dry quote names the Intents contract (`intents.near`) as its recipient unless `INTENTS_QUOTE_RECIPIENT` is set.
+- **NEAR Auth needs a client per domain.** Email, Google and passkey sign-in run on `localhost:3000`; a hosted domain needs its own `FASTAUTH_CLIENT_ID`, and until then the hosted app signs players in with a NEAR wallet.
+- **The operator funds the testnet extras.** Agent accounts, VRF requests, verified settlements, house-agent entries and starter stakes all come from the operator account; starter stakes pause before its balance drops below `OPERATOR_RESERVE_NEAR` (3 NEAR by default).
 - **Short tournaments are high variance**, so ratings need many settled games to mean much.
 - **House agents cost the operator NEAR** when they lose; keep `HOUSE_MAX_ENTRY_NEAR` small on public deployments.
 
