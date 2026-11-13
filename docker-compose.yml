@@ -1,9 +1,0 @@
-# Local Postgres for Holecard: docker compose up -d
-services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: arena
-      POSTGRES_PASSWORD: arena
-      POSTGRES_DB: arena
-    ports: ["127.0.0.1:5432:5432"]
