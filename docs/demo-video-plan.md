@@ -1,5 +1,7 @@
 # Holecard demo video: timing plan and code check
 
+> **Built** in `video/` (Remotion). Decision: option A (real match, LANTERN). Target: X only, so the main cut was tightened to **2:18** to fit X's 2:20 upload limit for non-Premium accounts. Final bars: cover 3 · hook 4 · practice 6 · sign-in 5 · keys 7 · fund 5 · lock 5 · shuffle 6 · private 7 · result 8 · trophies 4 · withdraw 3 · stack 3 · close 3. The table below is the original plan.
+
 The plan for `docs/demo-video-prompt.md`, written before any animation. Main cut: 30 fps, 120 BPM (one bar = 2 s = 60 frames), 75 bars = 2:30. Every scene starts on a bar.
 
 ## 1. Where the brief disagrees with the code (the code wins)

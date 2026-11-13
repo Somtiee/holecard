@@ -1,8 +1,6 @@
-# Holecard: from repository to fully working deployment
+# Deploy Holecard
 
-This guide takes you from a fresh checkout to a hosted Holecard where every feature works: wallet and email sign-in, agents with their own NEAR accounts, private TEE decisions, verifiable shuffles, escrowed prizes, house agents, trophies, gasless play, Intents quotes and the Agent Market worker. Follow the steps in order. Each step ends with a check so you know it worked before moving on.
-
-Time: about 60–90 minutes the first time. Cost: free on testnet (faucet NEAR), plus NEAR AI Cloud credits.
+Set up a Holecard deployment with NEAR testnet accounts, NEAR AI Cloud inference, verifiable shuffles and replay-verified payouts. This guide also covers optional sign-in, funding and marketplace integrations.
 
 ---
 
@@ -10,8 +8,8 @@ Time: about 60–90 minutes the first time. Cost: free on testnet (faucet NEAR),
 
 | Tool | Install | Check |
 | --- | --- | --- |
-| Node.js 22+ (24 LTS recommended) | https://nodejs.org | `node -v` |
-| Docker Desktop | https://www.docker.com | `docker -v` |
+| Node.js 24 | https://nodejs.org | `node -v` |
+| PostgreSQL | A running instance or the Docker command in the [README](../README.md#run-locally) | `curl http://127.0.0.1:8787/api/ready` once the app is running |
 | Rust + wasm target | `curl https://sh.rustup.rs -sSf \| sh` then `rustup target add wasm32-unknown-unknown` | `cargo -V` |
 | cargo-near | `cargo install --locked cargo-near` | `cargo near --version` |
 | near-cli-rs | `cargo install --locked near-cli-rs` | `near --version` |
@@ -21,21 +19,15 @@ Then, from the repository root:
 
 ```sh
 npm ci
-npm test                 # 53 tests should pass
-npm run test:contracts   # 29 tests should pass
+npm test
+npm run test:contracts
 ```
 
 ---
 
 ## 1. Try it locally first (5 minutes, no keys)
 
-```sh
-docker compose up -d     # local Postgres
-cp .env.example .env
-npm run dev
-```
-
-Open http://127.0.0.1:5173/#/practice and play a practice game. If that works, the engine, server, database and UI are all healthy. Stop with Ctrl-C.
+Follow the [local quickstart](../README.md#run-locally) to connect PostgreSQL, start the app and play a practice game. Stop the dev server with Ctrl-C before configuring the testnet services.
 
 > **Careful:** once `.env` contains real NEAR keys, every server you start with it (including `npm run dev`) acts on testnet: it creates house agents, enters tournaments and finalizes them. Use `HOUSE_AGENTS=off` in a scratch `.env` when you only want to look at the UI.
 
@@ -59,7 +51,7 @@ near account create-account sponsor-by-faucet-service my-holecard-relay.testnet 
 
 The operator spends roughly: 0.1 NEAR per new agent account, 0.05 NEAR per tournament for OutLayer VRF (unused part refunded), the house's entry fees (won back when house agents win), and gas. The relayer spends `SPONSOR_NEAR` per new player (capped by `SPONSOR_DAILY_CAP`) plus gas. Top up by transferring from another testnet account (new faucet-funded accounts come with 10 NEAR) when they run low.
 
-**Already have the live contract (`agent-arena-ad7b13.testnet`)?** Skip to step 3b.
+If you already manage a Holecard contract, see [upgrading an existing deployment](#3b-upgrading-an-existing-deployment).
 
 ---
 
@@ -79,12 +71,12 @@ near contract call-function as-read-only my-holecard.testnet get_config json-arg
 
 You should see your operator, `"agent_seed": "100000000000000000000000"` and `"operator_funds_agents": true`.
 
-### 3b. Upgrading the existing contract (recommended for `agent-arena-ad7b13.testnet`)
+### 3b. Upgrading an existing deployment
 
-The live contract predates two fixes: the operator now pays new agent accounts (escrow can never be drained), and trophies use the Holecard name. Upgrading keeps all state.
+The upgrade script preserves contract state. Use the account ID of the deployment you manage.
 
 ```sh
-scripts/upgrade-testnet.sh agent-arena-ad7b13.testnet
+scripts/upgrade-testnet.sh my-holecard.testnet
 ```
 
 You need the contract account's key in `~/.near-credentials/testnet/`. The script runs the tests, builds, deploys and checks for `operator_funds_agents: true`.
@@ -106,6 +98,28 @@ The live contract already has its VRF source set. For a fresh contract:
    ```
 
 Check: `get_config` shows a `randomness_source`. Without one, tournaments still work, but decks come only from the operator's committed seed, with no VRF mix.
+
+### 3d. Replay-verified payouts
+
+Build the replay worker and upload it to FastFS. The upload script reads `ARENA_OPERATOR_ID` and `ARENA_OPERATOR_PRIVATE_KEY` from `.env`.
+
+```sh
+rustup target add wasm32-wasip2
+cargo build --manifest-path workers/replay/Cargo.toml --locked --target wasm32-wasip2 --release
+node --import tsx scripts/fastfs-upload.ts workers/replay/target/wasm32-wasip2/release/holecard-replay.wasm
+```
+
+Create an OutLayer testnet project using the URL from the upload as its `WasmUrl` source. Set the project ID in the command below and sign with the contract account.
+
+```sh
+near contract call-function as-transaction my-holecard.testnet set_settlement_verifier \
+  json-args '{"verifier":{"outlayer":"outlayer.testnet","project_id":"my-holecard.testnet/holecard-replay"}}' \
+  prepaid-gas '30.0 Tgas' attached-deposit '0 NEAR' sign-as my-holecard.testnet network-config testnet sign-with-legacy-keychain send
+
+near contract call-function as-read-only my-holecard.testnet get_settlement_verifier json-args '{}' network-config testnet now
+```
+
+The view should return your project ID. When a verifier is configured, the contract requires a successful replay before paying prizes. With the verifier unset, the contract accepts the operator’s proposed ranking after its standard settlement checks.
 
 ---
 
@@ -135,14 +149,13 @@ Without a key you can still demo tournaments with `ARENA_DECISION_POLICY=fixture
 
 ## 6. Host it (Railway)
 
-The repository includes a `Dockerfile` and Railway infrastructure-as-code in `.railway/railway.ts` (one service plus Postgres).
-
 1. `railway login`, then `railway link` to your project (or `railway init` for a new one).
-2. Add a Postgres database in the Railway dashboard if the project does not have one. `DATABASE_URL` is wired automatically.
+2. Add a PostgreSQL service and set the app service’s `DATABASE_URL` to reference the database service’s connection URL.
 3. Set variables (dashboard → service → Variables). Secrets come from `~/.near-credentials/testnet/<account>.json` (`private_key`):
 
    | Variable | Value |
    | --- | --- |
+   | `HOST` | `0.0.0.0` |
    | `PUBLIC_ORIGIN` | `https://<your-service>.up.railway.app` (exactly what the browser shows) |
    | `PUBLIC_HOSTNAME` | `<your-service>.up.railway.app` |
    | `NEAR_NETWORK` | `testnet` |
@@ -153,7 +166,7 @@ The repository includes a `Dockerfile` and Railway infrastructure-as-code in `.r
    | `RELAYER_ID`, `RELAYER_PRIVATE_KEY`, `SPONSOR_NEAR` | from step 5 |
    | anything else from step 5 | as needed |
 
-4. Deploy: `railway up` from the repository root (or connect the GitHub repository for automatic deploys).
+4. Set the service build command to `npm run build` and the start command to `npm start`. Deploy with `railway up` from the repository root or connect the GitHub repository for automatic deploys.
 5. Generate a public domain in Railway (Settings → Networking) if you have not already, and make sure `PUBLIC_ORIGIN` matches it exactly.
 
 Checks:
@@ -178,19 +191,10 @@ Do this once in the browser on the hosted URL. Every step should succeed.
 5. **Open a table:** arenas → Create tournament (entry 1 NEAR, 4 seats, 5 min). Reserve your agent.
 6. **Fill with house agents:** click **Fill 3 empty seats with house agents**, then **Lock roster on NEAR**.
 7. **Watch:** within a minute every agent enters by itself (the house tops up its own seats), the contract starts the match and requests VRF, and hands play live with TEE receipts.
-8. **Settle:** after 5 minutes the operator finalizes. Open any decision → **In its own words** shows the model's explanation. **Run verification** passes. Trophies appear on the winner's page.
+8. **Settle:** wait for the tournament to finish and OutLayer to confirm the replay. Check the settlement in **Proof of result**, select **Run verification** and open a decision to see **In its own words**. Trophies appear on the winner's page.
 9. **Withdraw:** WITHDRAW on your agent page sends the winnings to your wallet.
 
-The scripted equivalent (two players, no house agents) is `npm run e2e:testnet` against a running server.
-
----
-
-## 8. Hackathon submission checklist
-
-- [ ] Repository is public (judges cannot open private ones).
-- [ ] README "Hosted demo" row points at your Railway URL.
-- [ ] Demo post on X: say you built it at NEAR HACKATHON, tag @NEARProtocol and #NEARHackathon, attach a 60–90 second video. The link preview uses `public/og.png` automatically once `PUBLIC_ORIGIN` is set. Suggested video: practice game → create agent → fill with house agents → live hand → settle → "In its own words" → verification.
-- [ ] Submit the form at https://nearhackathon.com with the repository link and the demo post link before 14 Nov 2026, 23:59 UTC. Track: Games With Real Economies (add Agent Economy, Privacy & Private AI and AI Security as relevant).
+To run the scripted test with two players, use `ARENA_URL=https://your-domain.example npm run e2e:testnet` against a configured server.
 
 ---
 
