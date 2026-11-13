@@ -16,3 +16,19 @@ video/public
 video/review
 video/package-lock.json
 
+# local environment and secrets (keep the documented template visible)
+.env*
+!.env.example
+*.pem
+*.key
+
+# editors and OS
+.vscode/
+.idea/
+Thumbs.db
+
+# logs and coverage
+*.log
+coverage/
+.nyc_output/
+
