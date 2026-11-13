@@ -9,6 +9,7 @@ dist
 Dockerfile
 docker-compose.yml
 .dockerignore
+.railwayignore
 contracts/near/target
 .claude/
 workers/*/target
