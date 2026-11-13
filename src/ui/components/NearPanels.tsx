@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { FastAuthConfig } from '../wallet/fastauth';
 import { ArrowRight, Award, Cpu, Dices, ExternalLink, Gift, KeyRound, Repeat, ShieldCheck, Wallet } from 'lucide-react';
 import { depositToAgent, nearToYocto, withdrawFromAgent } from '../wallet/near';
 
@@ -13,7 +14,7 @@ export type NearConfig = {
   nearReady: boolean;
   fundingSources: { id: string; label: string }[];
   intentsReady: boolean;
-  fastAuth: { contractId: string; mpcContractId: string; clientId: string | null };
+  fastAuth: FastAuthConfig;
   sponsorNear: number;
   agentMarket: {
     enabled: boolean;
@@ -290,9 +291,7 @@ export function AgentNearPanel({
             QUOTE {amount} NEAR
           </button>
         </div>
-        {!config?.intentsReady && (
-          <p className="fund-hint">NEAR Intents quotes are turned off on this server.</p>
-        )}
+        {!config?.intentsReady && <p className="fund-hint">NEAR Intents quotes are turned off on this server.</p>}
         {quote && (
           <div className="quote">
             <b>

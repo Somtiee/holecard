@@ -38,8 +38,8 @@ export default function App() {
   }, [toast]);
   const network = arena.config?.network || 'testnet';
   const [signIn, setSignIn] = useState(false);
-  // Email, Google and passkey sign-in need a NEAR Auth client registered for this domain.
-  const socialReady = Boolean(arena.config?.fastAuth?.clientId) || location.origin === 'http://localhost:3000';
+  // Email, Google and passkey sign-in appear once NEAR Auth accepts this domain's callback URL (the server checks).
+  const socialReady = Boolean(arena.config?.fastAuth?.ready);
   const connectSocial = async () => {
     setSignIn(false);
     try {

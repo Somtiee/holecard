@@ -14,6 +14,7 @@ import {
   sessionOwner,
   signInRecipient,
   verifyChallenge,
+  verifyFastAuthSignIn,
 } from './auth';
 import {
   agentAnalytics,
@@ -57,6 +58,13 @@ import { allowedModels, attestModel, nearAiConfigured } from './near/nearai';
 import { FUNDING_SOURCES, fundingQuote, intentsEnabled } from './near/intents';
 import { agentMarketStatus, coachReport, pollAgentMarket } from './near/agentMarket';
 import { FASTAUTH_CONTRACT, relayDelegate, relayFastAuthSign, sponsorAgent } from './near/relayer';
+import {
+  fastAuthCallbackAllowed,
+  fastAuthClientId,
+  fastAuthDomain,
+  fastAuthSigningAudience,
+  refreshFastAuthCallback,
+} from './near/fastauth';
 
 const app = express();
 app.disable('x-powered-by');
@@ -83,6 +91,7 @@ const limited = new Set([
   '/api/agent-market/preview',
   '/api/relay/delegate',
   '/api/relay/fastauth-sign',
+  '/api/auth/verify-fastauth',
   '/api/practice',
 ]);
 app.use((req, res, next) => {
@@ -174,9 +183,14 @@ app.get('/api/config', async (_req, res) =>
     settlementVerifier: (await settlementVerifier())?.project_id ?? null,
     fundingSources: FUNDING_SOURCES.map(({ id, label }) => ({ id, label })),
     fastAuth: {
+      // Email, Google and passkey sign-in is offered only once NEAR Auth accepts this server's callback URL.
+      ready: NEAR_NETWORK === 'testnet' && Boolean(safeContract()) && fastAuthCallbackAllowed(),
       contractId: FASTAUTH_CONTRACT,
       mpcContractId: process.env.FASTAUTH_MPC_CONTRACT_ID || 'v1.signer-prod.testnet',
-      clientId: process.env.FASTAUTH_CLIENT_ID || null,
+      clientId: fastAuthClientId(),
+      domain: fastAuthDomain(),
+      signingAudience: fastAuthSigningAudience(),
+      signInReceiver: safeContract(),
     },
     sponsorNear: NEAR_NETWORK === 'testnet' ? Number(process.env.SPONSOR_NEAR || 0) : 0,
     intentsReady: intentsEnabled(),
@@ -199,6 +213,14 @@ app.post(
   '/api/auth/verify',
   handle(async (req, res) => {
     const session = await verifyChallenge(req.body || {});
+    res.setHeader('Set-Cookie', sessionCookie(session.token, secure));
+    res.json({ accountId: session.accountId });
+  }),
+);
+app.post(
+  '/api/auth/verify-fastauth',
+  handle(async (req, res) => {
+    const session = await verifyFastAuthSignIn(req.body || {});
     res.setHeader('Set-Cookie', sessionCookie(session.token, secure));
     res.json({ accountId: session.accountId });
   }),
@@ -495,6 +517,10 @@ export { app, server };
 if (process.env.NODE_ENV !== 'test') {
   await migrate();
   server.listen(PORT, HOST, () => console.log(`Holecard (NEAR ${NEAR_NETWORK}) listening on ${HOST}:${PORT}`));
+  // Learn at boot whether NEAR Auth accepts this server's callback URL, so the first page load already knows.
+  void refreshFastAuthCallback().then(() =>
+    console.log(`NEAR Auth callback ${fastAuthCallbackAllowed() ? 'allowed' : 'not allowlisted yet'} for this origin`),
+  );
   let busy = false;
   setInterval(() => {
     if (busy) return;

@@ -6,7 +6,7 @@
 
 Holecard is a poker arena for AI agents on NEAR. Every agent is its own NEAR account. It plays timed Texas Hold'em tournaments against other people's agents, decides each move privately inside a NEAR AI Cloud TEE (trusted execution environment), and is paid by a NEAR smart contract that escrows every entry fee. In Hold'em your *hole cards* are the two only you can see; Holecard is built so that this stays true for AI agents too.
 
-![NEAR testnet](https://img.shields.io/badge/NEAR-testnet-00C08B?style=flat-square) ![Rust contract](https://img.shields.io/badge/contract-Rust%20·%20near--sdk%205-000?style=flat-square) ![TypeScript](https://img.shields.io/badge/app-TypeScript%20·%20React%2019%20·%20Express%205-3178C6?style=flat-square) ![Tests](https://img.shields.io/badge/tests-37%20contract%20·%2057%20app-1cc744?style=flat-square) ![License MIT](https://img.shields.io/badge/license-MIT-555?style=flat-square)
+![NEAR testnet](https://img.shields.io/badge/NEAR-testnet-00C08B?style=flat-square) ![Rust contract](https://img.shields.io/badge/contract-Rust%20·%20near--sdk%205-000?style=flat-square) ![TypeScript](https://img.shields.io/badge/app-TypeScript%20·%20React%2019%20·%20Express%205-3178C6?style=flat-square) ![Tests](https://img.shields.io/badge/tests-37%20contract%20·%2067%20app-1cc744?style=flat-square) ![License MIT](https://img.shields.io/badge/license-MIT-555?style=flat-square)
 
 Built for **NEAR HACKATHON** (1–14 Nov 2026). Primary track: **Games With Real Economies**. Also relevant to Agent Economy, Privacy & Private AI, AI Security & Defense, and NFTs That Do Something.
 
@@ -98,7 +98,7 @@ To let an AI agent play for money, three questions need good answers:
 | **NEAR AI Cloud (private inference)** | Every poker decision is a chat completion on a TEE-hosted open model through `cloud-api.near.ai`. Holecard stores only sha256 hashes of the exact request and response bytes, fetches the enclave's ECDSA signature over them and checks the signer against a fresh, nonce-bound attestation report (NVIDIA NRAS GPU evidence + signing keys). | `src/server/near/nearai.ts`; "Private inference receipts" panel |
 | **OutLayer VRF + yield/resume** | When a match starts the contract calls OutLayer's `request_execution`. The transaction yields while a TEE worker produces a VRF value, then resumes into `on_randomness`, which checks the Ed25519 proof with `env::ed25519_verify` against OutLayer's VRF key and stores `sha256(signature)`. Each hand's deck mixes it with the operator seed committed before entry. Values can't be re-rolled, only the contract account can set the VRF key, and `finalize` refuses to pay out without verified randomness. | `contracts/near/src/lib.rs` `request_randomness`; "Verifiable shuffle" panel |
 | **NEP-245 multi-token trophies** | The contract is also a multi-token contract. Finalizing mints a unique `trophy:<tournament>` to the winner plus fungible `champion` and `podium` badges (`mt_balance_of`, `mt_tokens_for_owner`, `mt_metadata_token_all`, NEP-245 `mt_mint` events). They are soulbound (`mt_transfer` rejects), so other apps can read the reputation but nobody can buy it. | `contracts/near/src/lib.rs`; "Trophies" on each agent page |
-| **NEAR Auth (FastAuth)** | Sign in with email, Google or a passkey: no wallet, no seed phrase. The MPC network derives the player's ed25519 key; they approve the NEP-413 challenge; the relayer submits the MPC `sign` call; the server verifies the signature against the implicit account. | `src/ui/wallet/fastauth.ts`, `src/server/near/relayer.ts` |
+| **NEAR Auth (FastAuth)** | Sign in with email, Google or a passkey: no wallet, no seed phrase. The MPC network derives the player's ed25519 key. The published FastAuth SDK signs transactions but not NEP-413 messages, so the player approves a sign-in transaction that can never execute (nonce 0, zero block hash, a zero-gas call carrying the server's single-use challenge); the relayer submits the MPC `sign` call and the server checks the signature against the derived key and implicit account. The option appears by itself once NEAR Auth accepts the server's callback URL: the server checks the live Auth0 tenant every 10 minutes. | `src/ui/wallet/fastauth.ts`, `src/server/near/fastauth.ts`, `src/server/near/relayer.ts` |
 | **Meta-transactions (NEP-366) relayer** | Wallets that support delegate actions sign `deposit` / `withdraw` and the Holecard relayer pays the gas. The relayer only forwards calls from the signed-in account to the arena contract's `deposit` / `withdraw`. On testnet new players can claim a one-time starter stake, so they never need to buy NEAR to play. | `src/server/near/relayer.ts` |
 | **OutLayer verified settlement** | The operator can propose a ranking but cannot pay it. `finalize_verified` sends OutLayer only what the contract already trusts (the seed it checked against the commitment, the verified VRF output, the roster commitments, the number of paid places) plus the preimages of those commitments and a compact action log, whose hash becomes `replay_hash`. A TEE runs [workers/replay](workers/replay), a Rust port of the poker engine: it re-deals every hand, rejects any illegal action and derives the ranking. `on_settlement_checked` pays only if it matches the proposal; otherwise nothing moves and anyone can cancel for refunds after the grace period. The worker reproduced 200 simulated tournaments (8,663 hands) exactly against the TypeScript engine (`scripts/check-replay-worker.ts`). | `contracts/near/src/lib.rs` `finalize_verified`; `workers/replay`; "Proof of result" panel |
 | **NEAR Intents (1Click API)** | On an agent page, an owner can price funding the entry fee from USDC on Base, Arbitrum, Ethereum or Solana, or from ETH, SOL or BTC. Intents run on mainnet only, so this testnet build requests `dry: true` quotes and executes nothing. | `src/server/near/intents.ts` |
@@ -389,6 +389,7 @@ All routes are under `/api`. "Owner" means a signed-in session (NEP-413 or NEAR 
 | POST | `/agents/:id/sponsor` | owner | claim the one-time testnet starter stake |
 | POST | `/relay/delegate` | owner | relay a signed NEP-366 delegate action |
 | POST | `/relay/fastauth-sign` | | submit the NEAR Auth MPC `sign` call |
+| POST | `/auth/verify-fastauth` | | check a NEAR Auth sign-in transaction signature and start a session |
 | POST | `/intents/quote` | | NEAR Intents dry quote for an entry fee |
 | GET | `/nearai/attestation` | | fresh TEE attestation for a model |
 | GET | `/agent-market` · POST `/agent-market/preview` | · owner | Arena Coach status; preview a report |
@@ -424,13 +425,13 @@ Open http://127.0.0.1:5173/#/practice. Tournaments and agent creation stay disab
 
 **Full stack:** deploy the contract (next sections), then set `ARENA_CONTRACT_ID`, `ARENA_OPERATOR_ID`, `ARENA_OPERATOR_PRIVATE_KEY`, `AGENT_KEY_SECRET` and `NEARAI_API_KEY` in `.env`. Without a NEAR AI key, `ARENA_DECISION_POLICY=fixture` plays tournaments with the deterministic built-in policy; the UI labels it and no TEE receipts are produced.
 
-Email/Google sign-in uses NEAR Auth's shared testnet client, which only allows the origin `http://localhost:3000`. To try it locally: `npm run build && PORT=3000 PUBLIC_ORIGIN=http://localhost:3000 npm start`, then open http://localhost:3000. Other origins need their own `FASTAUTH_CLIENT_ID`.
+Email/Google sign-in uses NEAR Auth's shared testnet client, which only allows the exact callback `http://localhost:3000/`. To try it locally: `npm run build && PORT=3000 PUBLIC_ORIGIN=http://localhost:3000 npm start`, then open http://localhost:3000 (port 3000 must be free; any other port or host is rejected). A hosted domain needs NEAR Auth to allowlist it, or its own `FASTAUTH_CLIENT_ID` / `FASTAUTH_DOMAIN` / `FASTAUTH_SIGNING_AUDIENCE`.
 
 | Script | Does |
 | --- | --- |
 | `npm run dev` | API (tsx watch) and Vite dev server together |
 | `npm run build` / `npm start` | type-check and build the UI; serve API + built UI |
-| `npm test` | vitest: engine, policy, NEAR crypto, relayer, practice, rating, house agents and HTTP API (57 tests) |
+| `npm test` | vitest: engine, policy, NEAR crypto, relayer, practice, rating, house agents and HTTP API (67 tests) |
 | `npm run test:contracts` | `cargo test` for the contract |
 | `npm run typecheck` | `tsc --noEmit` (strict, no unused locals) |
 | `npm run format` / `format:check` | Prettier |
@@ -454,7 +455,7 @@ Every variable is documented in [`.env.example`](.env.example). The important on
 | `NEARAI_API_KEY`, `NEARAI_BASE_URL`, `NEARAI_MODELS` | NEAR AI Cloud access and the model allowlist |
 | `AGENT_TIMEOUT_MS`, `ARENA_DECISION_POLICY` | decision clock; `fixture` for keyless local play |
 | `RELAYER_ID`, `RELAYER_PRIVATE_KEY`, `SPONSOR_NEAR`, `SPONSOR_DAILY_CAP`, `OPERATOR_RESERVE_NEAR` | gasless relayer (defaults to the operator), testnet starter stakes and the operator balance they never touch |
-| `FASTAUTH_CLIENT_ID`, `FASTAUTH_CONTRACT_ID`, `FASTAUTH_MPC_CONTRACT_ID` | NEAR Auth |
+| `FASTAUTH_CLIENT_ID`, `FASTAUTH_DOMAIN`, `FASTAUTH_SIGNING_AUDIENCE`, `FASTAUTH_CONTRACT_ID`, `FASTAUTH_MPC_CONTRACT_ID` | NEAR Auth: the shared testnet client by default, or a dedicated client for your domain |
 | `INTENTS_QUOTES`, `INTENTS_QUOTE_RECIPIENT`, `ONECLICK_JWT` | NEAR Intents dry-run quotes: `off` hides them; the recipient defaults to `intents.near` |
 | `AGENT_MARKET_TOKEN`, `AGENT_MARKET_LISTING_URL` | Agent Market worker |
 | `HOUSE_AGENTS`, `HOUSE_MAX_ENTRY_NEAR` | house agents on/off and the largest entry the house pays |
@@ -496,12 +497,13 @@ It runs the contract tests, builds, deploys without an init call and checks that
 | `tests/audit-regressions.test.ts` | minimum-raise rules, short all-in not reopening raises, null provider answers, full 256-bit seed use, 250 adversarial action sequences with uneven stacks |
 | `tests/near.test.ts` | NEP-413 hashing and signatures, agent key vault, commitments shared with the contract |
 | `tests/relayer.test.ts` | delegate-action checks and NEAR Auth implicit accounts |
+| `tests/fastauth.test.ts` | NEAR Auth sign-in proofs: valid signatures accepted; another challenge, site or contract, an executable transaction, another key or another sign-in's signature rejected |
 | `tests/practice.test.ts` | practice games conserve chips and explain every decision; input validation; Elo behaviour; the fast evaluator matches the engine on 3,000 random pairs; styles play differently |
 | `tests/house.test.ts` | house owner keys are deterministic, distinct and valid implicit accounts; names change with the secret |
 | `tests/api.integration.test.ts` | the running HTTP server: unknown routes, same-origin and session protection on writes, malformed NEP-413 sign-ins, public config without secrets, WebSocket feed without private state |
 
 ```sh
-npm test                 # 57 tests
+npm test                 # 67 tests
 npm run test:contracts   # 37 tests
 ```
 
@@ -512,7 +514,7 @@ npm run test:contracts   # 37 tests
 - **The replay checks legality, not authorship, of each action.** The contract pays only after an OutLayer TEE re-deals every hand from the committed seed and the verified VRF output, rejects any illegal action and reaches the same ranking, so a mis-ranked or impossible result cannot be paid. What it cannot see is whether each legal action is the one the model chose: the NEAR AI Cloud signature over every decision is checked by the server and published on the match page, not by the contract.
 - **NVIDIA NRAS JWT claims are decoded** and checked for verdict and nonce, but the JWT signature is not yet verified against NVIDIA's JWKS.
 - **NEAR Intents are quotes only** on testnet; nothing executes. A dry quote names the Intents contract (`intents.near`) as its recipient unless `INTENTS_QUOTE_RECIPIENT` is set.
-- **NEAR Auth needs a client per domain.** Email, Google and passkey sign-in run on `localhost:3000`; a hosted domain needs its own `FASTAUTH_CLIENT_ID`, and until then the hosted app signs players in with a NEAR wallet.
+- **NEAR Auth needs its callback allowlisted.** NEAR Auth's shared testnet client accepts only `http://localhost:3000/`, so email, Google and passkey sign-in run there. On a hosted domain the option stays hidden, and players sign in with a NEAR wallet, until NEAR Auth allowlists the domain or a dedicated client is configured; the server notices the allowlisting by itself.
 - **The operator funds the testnet extras.** Agent accounts, VRF requests, verified settlements, house-agent entries and starter stakes all come from the operator account; starter stakes pause before its balance drops below `OPERATOR_RESERVE_NEAR` (3 NEAR by default).
 - **Short tournaments are high variance**, so ratings need many settled games to mean much.
 - **House agents cost the operator NEAR** when they lose; keep `HOUSE_MAX_ENTRY_NEAR` small on public deployments.

@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { Request, RequestHandler } from 'express';
-import { isFullAccessKey, isImplicitAccountOf, validAccountId, verifyNep413Signature } from './near/chain';
+import { contractId, isFullAccessKey, isImplicitAccountOf, validAccountId, verifyNep413Signature } from './near/chain';
+import { checkFastAuthProof } from './near/fastauth';
 import { pool, withTx } from './db';
 
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -77,12 +78,35 @@ export async function verifyChallenge(body: {
     // sign-in) are self-certifying: the account id is the hex of the key, and they may not exist onchain yet.
     if (!isImplicitAccountOf(accountId, publicKey) && !(await isFullAccessKey(accountId, publicKey)))
       throw new Error('The signing key is not a full-access key of this NEAR account');
-    const token = randomBytes(32).toString('hex');
-    await client.query(
-      `INSERT INTO sessions(token_hash,account_id,public_key,expires_at) VALUES($1,$2,$3,now()+interval '7 days')`,
-      [digest(token), accountId, publicKey],
+    return createSession(client, accountId, publicKey);
+  });
+}
+
+type Queryable = { query: (sql: string, params?: unknown[]) => Promise<unknown> };
+async function createSession(client: Queryable, accountId: string, publicKey: string) {
+  const token = randomBytes(32).toString('hex');
+  await client.query(
+    `INSERT INTO sessions(token_hash,account_id,public_key,expires_at) VALUES($1,$2,$3,now()+interval '7 days')`,
+    [digest(token), accountId, publicKey],
+  );
+  return { accountId, token };
+}
+
+/** NEAR Auth sign-in: the derived key's MPC signature over a never-executable transaction that carries the
+ * challenge (see near/fastauth.ts). The challenge is consumed in the same database transaction. */
+export async function verifyFastAuthSignIn(body: Record<string, unknown>) {
+  const { accountId, publicKey } = checkFastAuthProof(body, {
+    receiverId: contractId(),
+    recipient: signInRecipient(),
+  });
+  const nonceHex = Buffer.from(String(body.nonce), 'base64').toString('hex');
+  return withTx(async client => {
+    const found = await client.query(
+      'DELETE FROM sign_in_challenges WHERE nonce=$1 AND expires_at>now() RETURNING nonce',
+      [nonceHex],
     );
-    return { accountId, token };
+    if (!found.rowCount) throw new Error('Sign-in challenge expired or already used');
+    return createSession(client, accountId, publicKey);
   });
 }
 export function sessionCookie(token: string, secure: boolean) {

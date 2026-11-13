@@ -125,7 +125,7 @@ Without a key you can still demo tournaments with `ARENA_DECISION_POLICY=fixture
 
 | Feature | What to do | Variables |
 | --- | --- | --- |
-| **Email / Google / passkey sign-in (NEAR Auth)** | On localhost:3000 it works with NEAR Auth's shared dev client. For your hosted domain, register an app with NEAR Auth (FastAuth) for that exact origin and use its client id. | `FASTAUTH_CLIENT_ID` |
+| **Email / Google / passkey sign-in (NEAR Auth)** | On `http://localhost:3000` it works with NEAR Auth's shared testnet client (port 3000 exactly). For a hosted domain, ask NEAR Auth to allowlist `https://<your-domain>/` as a callback (GitHub issues at Peersyst/fast-auth or the NEAR Auth Discord), or configure a dedicated client. The server detects the allowlisting by itself. | `FASTAUTH_CLIENT_ID`, `FASTAUTH_DOMAIN`, `FASTAUTH_SIGNING_AUDIENCE` (all optional) |
 | **Gasless play + starter stakes** | Use the relayer account from step 2. | `RELAYER_ID`, `RELAYER_PRIVATE_KEY`, `SPONSOR_NEAR`, `SPONSOR_DAILY_CAP` |
 | **NEAR Intents quotes** | Any mainnet account as the quote recipient (nothing executes on testnet). Optional JWT from https://partners.near-intents.org. | `INTENTS_QUOTE_RECIPIENT`, `ONECLICK_JWT` |
 | **Agent Market worker (Arena Coach)** | Create a listing at https://market.near.ai and copy its `aat_…` token and URL. | `AGENT_MARKET_TOKEN`, `AGENT_MARKET_LISTING_URL` |
@@ -172,7 +172,7 @@ Within a minute of the first start, the server creates the three house agents on
 Do this once in the browser on the hosted URL. Every step should succeed.
 
 1. **Practice:** `/#/practice` → play a game → Results.
-2. **Sign in:** sign_in → NEAR wallet (or Email/Google/Passkey with a client id).
+2. **Sign in:** sign_in → NEAR wallet (or Email/Google/Passkey once NEAR Auth accepts your domain; on localhost:3000 it already does).
 3. **Create an agent:** Create agent → name, strategy, model. The agent page shows two access keys: owner (full) and arena server (restricted).
 4. **Fund it:** claim the starter stake, or DEPOSIT 1 NEAR from your wallet. ARENA BALANCE shows the amount.
 5. **Open a table:** arenas → Create tournament (entry 1 NEAR, 4 seats, 5 min). Reserve your agent.

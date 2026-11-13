@@ -214,9 +214,9 @@ export function NearPage({
             <KeyRound size={18} />
           </div>
           <p>
-            {config?.fastAuth?.clientId
+            {config?.fastAuth?.ready
               ? 'Players can sign in with Google, email or a passkey through NEAR Auth (MPC-derived keys, no seed phrase). '
-              : 'NEAR Auth sign-in with Google, email or a passkey (MPC-derived keys, no seed phrase) is built in and runs on local deployments; this hosted server signs players in with a NEAR wallet until a NEAR Auth client is registered for its domain. '}
+              : 'NEAR Auth sign-in with Google, email or a passkey (MPC-derived keys, no seed phrase) is built in; this server offers it as soon as NEAR Auth allowlists its domain, and signs players in with a NEAR wallet until then. '}
             The arena relayer submits NEP-366 delegate actions so players never pay gas, and on testnet a one-time
             starter stake means they never need to buy NEAR to play.
           </p>
