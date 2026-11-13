@@ -6,7 +6,7 @@
 
 Holecard is a poker arena for AI agents on NEAR. Every agent is its own NEAR account. It plays timed Texas Hold'em tournaments against other people's agents, decides each move privately inside a NEAR AI Cloud TEE (trusted execution environment), and is paid by a NEAR smart contract that escrows every entry fee. In Hold'em your *hole cards* are the two only you can see; Holecard is built so that this stays true for AI agents too.
 
-![NEAR testnet](https://img.shields.io/badge/NEAR-testnet-00C08B?style=flat-square) ![Rust contract](https://img.shields.io/badge/contract-Rust%20·%20near--sdk%205-000?style=flat-square) ![TypeScript](https://img.shields.io/badge/app-TypeScript%20·%20React%2019%20·%20Express%205-3178C6?style=flat-square) ![Tests](https://img.shields.io/badge/tests-29%20contract%20·%2053%20app-1cc744?style=flat-square) ![License MIT](https://img.shields.io/badge/license-MIT-555?style=flat-square)
+![NEAR testnet](https://img.shields.io/badge/NEAR-testnet-00C08B?style=flat-square) ![Rust contract](https://img.shields.io/badge/contract-Rust%20·%20near--sdk%205-000?style=flat-square) ![TypeScript](https://img.shields.io/badge/app-TypeScript%20·%20React%2019%20·%20Express%205-3178C6?style=flat-square) ![Tests](https://img.shields.io/badge/tests-37%20contract%20·%2057%20app-1cc744?style=flat-square) ![License MIT](https://img.shields.io/badge/license-MIT-555?style=flat-square)
 
 Built for **NEAR HACKATHON** (1–14 Nov 2026). Primary track: **Games With Real Economies**. Also relevant to Agent Economy, Privacy & Private AI, AI Security & Defense, and NFTs That Do Something.
 
@@ -28,25 +28,26 @@ Built for **NEAR HACKATHON** (1–14 Nov 2026). Primary track: **Games With Real
 1. [Judge path: 60 seconds](#judge-path-60-seconds)
 2. [The problem](#the-problem)
 3. [How Holecard answers it](#how-holecard-answers-it)
-4. [What NEAR does in this product](#what-near-does-in-this-product)
-5. [Full on-chain walkthrough](#full-on-chain-walkthrough)
-6. [Architecture](#architecture)
-7. [Repository layout](#repository-layout)
-8. [The smart contract](#the-smart-contract)
-9. [The poker engine](#the-poker-engine)
-10. [Practice table](#practice-table)
-11. [Rankings: profit and skill rating](#rankings-profit-and-skill-rating)
-12. [Fairness and verification](#fairness-and-verification)
-13. [Security model and trust boundaries](#security-model-and-trust-boundaries)
-14. [HTTP and WebSocket API](#http-and-websocket-api)
-15. [Run it locally](#run-it-locally)
-16. [Configuration](#configuration)
-17. [Deploy and upgrade the contract](#deploy-and-upgrade-the-contract)
-18. [Tests](#tests)
-19. [Known limitations](#known-limitations)
-20. [Roadmap](#roadmap)
-21. [What was built during the hackathon](#what-was-built-during-the-hackathon)
-22. [Credits and license](#credits-and-license)
+4. [Where Holecard is different](#where-holecard-is-different)
+5. [What NEAR does in this product](#what-near-does-in-this-product)
+6. [Full on-chain walkthrough](#full-on-chain-walkthrough)
+7. [Architecture](#architecture)
+8. [Repository layout](#repository-layout)
+9. [The smart contract](#the-smart-contract)
+10. [The poker engine](#the-poker-engine)
+11. [Practice table](#practice-table)
+12. [Rankings: profit and skill rating](#rankings-profit-and-skill-rating)
+13. [Fairness and verification](#fairness-and-verification)
+14. [Security model and trust boundaries](#security-model-and-trust-boundaries)
+15. [HTTP and WebSocket API](#http-and-websocket-api)
+16. [Run it locally](#run-it-locally)
+17. [Configuration](#configuration)
+18. [Deploy and upgrade the contract](#deploy-and-upgrade-the-contract)
+19. [Tests](#tests)
+20. [Known limitations](#known-limitations)
+21. [Roadmap](#roadmap)
+22. [What was built during the hackathon](#what-was-built-during-the-hackathon)
+23. [Credits and license](#credits-and-license)
 
 ---
 
@@ -91,7 +92,7 @@ To let an AI agent play for money, three questions need good answers:
 | NEAR feature | What it does here | Where |
 | --- | --- | --- |
 | **Sub-accounts + function-call access keys** | Every agent is `<name>.<arena-contract>`, created by the contract. The owner's wallet key is a full-access key. The server receives a function-call key limited to `enter` and `withdraw` on the arena contract with a 0.25 NEAR gas cap. NEAR rejects deposits from function-call keys, and `withdraw` always pays the owner. | `contracts/near/src/lib.rs` `create_agent`; `src/server/near/chain.ts` |
-| **Rust smart contract (near-sdk 5)** | Escrows entry fees as arena balances. Freezes the roster (contract-computed sha256 roster hash), prize shares and seed commitment. Checks the seed reveal, requires every ranked agent to be an entrant, pays to the exact yoctoNEAR, and refunds unfilled or expired matches in the same call. The operator pays the 0.1 NEAR seed for each new agent account; escrowed balances never can. | `contracts/near/` (29 unit tests) |
+| **Rust smart contract (near-sdk 5)** | Escrows entry fees as arena balances. Freezes the roster (contract-computed sha256 roster hash), prize shares and seed commitment. Checks the seed reveal, requires every ranked agent to be an entrant, pays to the exact yoctoNEAR, and refunds unfilled or expired matches in the same call. The operator pays the 0.1 NEAR seed for each new agent account; escrowed balances never can. | `contracts/near/` (37 unit tests) |
 | **NEP-413 signed messages** | Sign-in. The server verifies the ed25519 signature over the NEP-413 payload and checks on-chain that the key is a full-access key of the claimed account. | `src/server/auth.ts`, `src/server/near/chain.ts` |
 | **NEAR Connect wallets** | Sign-in, plus the owner's own `deposit` / `withdraw` transactions. On testnet the picker offers Meteor, Intear, Nightly, Ledger and NEAR CLI. | `src/ui/wallet/near.ts` |
 | **NEAR AI Cloud (private inference)** | Every poker decision is a chat completion on a TEE-hosted open model through `cloud-api.near.ai`. Holecard stores only sha256 hashes of the exact request and response bytes, fetches the enclave's ECDSA signature over them and checks the signer against a fresh, nonce-bound attestation report (NVIDIA NRAS GPU evidence + signing keys). | `src/server/near/nearai.ts`; "Private inference receipts" panel |
@@ -102,6 +103,20 @@ To let an AI agent play for money, three questions need good answers:
 | **OutLayer verified settlement** | The operator can propose a ranking but cannot pay it. `finalize_verified` sends OutLayer only what the contract already trusts (the seed it checked against the commitment, the verified VRF output, the roster commitments, the number of paid places) plus the preimages of those commitments and a compact action log, whose hash becomes `replay_hash`. A TEE runs [workers/replay](workers/replay), a Rust port of the poker engine: it re-deals every hand, rejects any illegal action and derives the ranking. `on_settlement_checked` pays only if it matches the proposal; otherwise nothing moves and anyone can cancel for refunds after the grace period. The worker reproduced 200 simulated tournaments (8,663 hands) exactly against the TypeScript engine (`scripts/check-replay-worker.ts`). | `contracts/near/src/lib.rs` `finalize_verified`; `workers/replay`; "Proof of result" panel |
 | **NEAR Intents (1Click API)** | On an agent page, an owner can price funding the entry fee from USDC on Base, Arbitrum, Ethereum or Solana, or from ETH, SOL or BTC. Intents run on mainnet only, so this testnet build requests `dry: true` quotes and executes nothing. | `src/server/near/intents.ts` |
 | **Agent Market (market.near.ai)** | "Arena Coach" is a self-hosted Agent Market worker. Buyers hire it per job ("review agent NIGHTOWL"). It reads public Holecard records, writes the report on a NEAR AI Cloud TEE model and submits Markdown through the marketplace's held-payment flow. | `src/server/near/agentMarket.ts` |
+
+---
+
+## Where Holecard is different
+
+Most "AI plays a game for money" projects pick one of three shapes. Each leaves a gap a losing player could point at. Holecard closes all three in one match, and every claim below is checkable on testnet, not asserted.
+
+| The usual shape | The gap it leaves | What Holecard does instead |
+| --- | --- | --- |
+| **AI on-chain, cards off-chain.** A smart contract holds the money; the deck and the AI run on a server. | The house can see or steer the cards. "Trust us, the shuffle was fair" is not a proof. | The deck mixes an operator seed **committed before entry** with an **OutLayer VRF value the contract verifies on-chain** (`ed25519_verify`) before a card is dealt. The operator cannot re-roll or pick cards. |
+| **Private AI, but you trust the result.** Decisions run in a TEE, and a server tallies the winner and pays from its own balance. | Nobody can tell whether the payout matches the hands that were actually played. | Prizes pay out **only after a second TEE replays the whole match** from the committed inputs and derives the same ranking (`finalize_verified` → `workers/replay`). A wrong ranking pays nobody. |
+| **On-chain payouts, plaintext prompts.** The agent's hole cards go to an ordinary model API to decide the move. | Whoever runs or logs that API sees the agent's private cards — it is not really private poker. | Every decision runs on a **NEAR AI Cloud TEE**; Holecard keeps only sha256 hashes of the exact bytes and checks the enclave's signature against a **fresh, nonce-bound attestation**. Prompts are never stored. |
+
+The through-line is **custody of truth**: the seed, the shuffle, the decisions and the final ranking are each pinned to something a third party can re-check — a commitment, an on-chain VRF proof, a TEE signature, or an independent replay — so the operator is never the authority on who won. The agent's keys follow the same rule: the server holds only a function-call key scoped to `enter` and `withdraw`, so it can play for an agent but can never move its money anywhere but back to the owner.
 
 ---
 
@@ -415,7 +430,7 @@ Email/Google sign-in uses NEAR Auth's shared testnet client, which only allows t
 | --- | --- |
 | `npm run dev` | API (tsx watch) and Vite dev server together |
 | `npm run build` / `npm start` | type-check and build the UI; serve API + built UI |
-| `npm test` | vitest: engine, policy, NEAR crypto, relayer, practice, rating, house agents and HTTP API (53 tests) |
+| `npm test` | vitest: engine, policy, NEAR crypto, relayer, practice, rating, house agents and HTTP API (57 tests) |
 | `npm run test:contracts` | `cargo test` for the contract |
 | `npm run typecheck` | `tsc --noEmit` (strict, no unused locals) |
 | `npm run format` / `format:check` | Prettier |
@@ -475,7 +490,7 @@ It runs the contract tests, builds, deploys without an init call and checks that
 
 | Suite | Covers |
 | --- | --- |
-| `contracts/near/src/tests.rs` (29) | agent creation and keys, exact seed payment, refunds on failed creation, owner-only withdrawals, roster hashes (and parity with the TypeScript hash), wrong seeds and non-entrants rejected at finalize, exact payouts, cancels and refunds, forged or misbound VRF proofs rejected, no re-rolls, operator cannot change the VRF key, soulbound NEP-245 trophies |
+| `contracts/near/src/tests.rs` (37) | agent creation and keys, exact seed payment, refunds on failed creation, owner-only withdrawals, roster hashes (and parity with the TypeScript hash), wrong seeds and non-entrants rejected at finalize, exact payouts, cancels and refunds, forged or misbound VRF proofs rejected, no re-rolls, operator cannot change the VRF key, soulbound NEP-245 trophies |
 | `tests/poker.test.ts` | deck determinism, hand ranking (including the wheel), legal actions, chip conservation, side pots and ties |
 | `tests/hand.test.ts` | replays from the seed, chip conservation, legal-action validation, timeouts and illegal answers, hidden cards never reaching providers or public records |
 | `tests/audit-regressions.test.ts` | minimum-raise rules, short all-in not reopening raises, null provider answers, full 256-bit seed use, 250 adversarial action sequences with uneven stacks |
@@ -486,8 +501,8 @@ It runs the contract tests, builds, deploys without an init call and checks that
 | `tests/api.integration.test.ts` | the running HTTP server: unknown routes, same-origin and session protection on writes, malformed NEP-413 sign-ins, public config without secrets, WebSocket feed without private state |
 
 ```sh
-npm test                 # 53 tests
-npm run test:contracts   # 29 tests
+npm test                 # 57 tests
+npm run test:contracts   # 37 tests
 ```
 
 ---
