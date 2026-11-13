@@ -9,3 +9,10 @@ dist
 contracts/near/target
 .claude/
 workers/*/target
+
+# demo video workspace: sources only, no builds or renders
+video/node_modules
+video/public
+video/review
+video/package-lock.json
+

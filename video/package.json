@@ -1,0 +1,20 @@
+{
+  "name": "holecard-demo-video",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render:main": "remotion render src/index.ts Main out/holecard-demo-1920x1080.mp4 --crf 14",
+    "render:vertical": "remotion render src/index.ts Vertical out/holecard-demo-1080x1920.mp4 --crf 14"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.543",
+    "@remotion/google-fonts": "^4.0.543",
+    "@remotion/media-utils": "^4.0.543",
+    "@types/react": "^19.3.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "remotion": "^4.0.543",
+    "typescript": "^7.0.2"
+  }
+}

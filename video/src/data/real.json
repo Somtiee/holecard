@@ -1,0 +1,1979 @@
+{
+ "practice": {
+  "seed": "2687b1bb47276f8ad56ea7ea5b31afbcc81b949c7adf315b94a2fe59d4183234",
+  "policy": "Every seat is a rules player that estimates its winning chances by simulating the rest of the hand, then applies its style. No model calls and nothing onchain.",
+  "seats": [
+   {
+    "id": "you",
+    "name": "NIGHTOWL",
+    "strategy": "Mathematical",
+    "house": false
+   },
+   {
+    "id": "house-1",
+    "name": "GRANITE",
+    "strategy": "Conservative",
+    "house": true
+   },
+   {
+    "id": "house-2",
+    "name": "VIPER",
+    "strategy": "Aggressive",
+    "house": true
+   },
+   {
+    "id": "house-3",
+    "name": "MIRAGE",
+    "strategy": "Bluff Heavy",
+    "house": true
+   }
+  ],
+  "strategy": "Mathematical",
+  "hand": {
+   "handNumber": 7,
+   "button": 2,
+   "smallBlind": 20,
+   "bigBlind": 40,
+   "startStacks": {
+    "you": 871,
+    "house-1": 670,
+    "house-2": 1297,
+    "house-3": 1162
+   },
+   "holeCards": {
+    "house-1": [
+     "4s",
+     "Kh"
+    ],
+    "house-2": [
+     "9d",
+     "7c"
+    ],
+    "house-3": [
+     "7d",
+     "6s"
+    ],
+    "you": [
+     "9h",
+     "Jh"
+    ]
+   },
+   "communityCards": [
+    "Jc",
+    "Jd",
+    "Qd",
+    "6d",
+    "3h"
+   ],
+   "pot": 1762,
+   "endStacks": {
+    "you": 1762,
+    "house-1": 670,
+    "house-2": 426,
+    "house-3": 1142
+   },
+   "decisions": [
+    {
+     "agentId": "house-1",
+     "agent": "GRANITE",
+     "stage": "preflop",
+     "position": "UTG",
+     "action": "fold",
+     "amount": 0,
+     "pot": 60,
+     "stack": 670,
+     "tableStacks": {
+      "you": 831,
+      "house-1": 670,
+      "house-2": 1297,
+      "house-3": 1142
+     },
+     "latencyMs": 0,
+     "reason": "King-4 under the gun, about 23% to win against 3 opponents. Calling 40 into 60 needs 40%, so it folds.",
+     "communityCards": [],
+     "timestamp": 1794561073187
+    },
+    {
+     "agentId": "house-2",
+     "agent": "VIPER",
+     "stage": "preflop",
+     "position": "BTN",
+     "action": "raise",
+     "amount": 167,
+     "raiseTarget": 167,
+     "pot": 227,
+     "stack": 1130,
+     "tableStacks": {
+      "you": 831,
+      "house-1": 670,
+      "house-2": 1130,
+      "house-3": 1142
+     },
+     "latencyMs": 0,
+     "reason": "9-7 on the button, about 33% to win against 2 opponents. Raises to 167 as a bluff from late position.",
+     "communityCards": [],
+     "timestamp": 1794561073187
+    },
+    {
+     "agentId": "house-3",
+     "agent": "MIRAGE",
+     "stage": "preflop",
+     "position": "SB",
+     "action": "fold",
+     "amount": 0,
+     "pot": 227,
+     "stack": 1142,
+     "tableStacks": {
+      "you": 831,
+      "house-1": 670,
+      "house-2": 1130,
+      "house-3": 1142
+     },
+     "latencyMs": 0,
+     "reason": "7-6 in the small blind, about 28% to win against 2 opponents. Calling 147 into 227 needs 39%, so it folds.",
+     "communityCards": [],
+     "timestamp": 1794561073187
+    },
+    {
+     "agentId": "you",
+     "agent": "NIGHTOWL",
+     "stage": "preflop",
+     "position": "BB",
+     "action": "call",
+     "amount": 127,
+     "pot": 354,
+     "stack": 704,
+     "tableStacks": {
+      "you": 704,
+      "house-1": 670,
+      "house-2": 1130,
+      "house-3": 1142
+     },
+     "latencyMs": 0,
+     "reason": "Jack-9 suited in the big blind, about 55% to win against 1 opponent. Calling 127 into 227 needs 36%, so it calls.",
+     "communityCards": [],
+     "timestamp": 1794561073187
+    },
+    {
+     "agentId": "you",
+     "agent": "NIGHTOWL",
+     "stage": "flop",
+     "position": "BB",
+     "action": "raise",
+     "amount": 305,
+     "raiseTarget": 305,
+     "pot": 659,
+     "stack": 399,
+     "tableStacks": {
+      "you": 399,
+      "house-1": 670,
+      "house-2": 1130,
+      "house-3": 1142
+     },
+     "latencyMs": 1,
+     "reason": "Three of a kind in the big blind, about 90% to win against 1 opponent. Raises to 305 for value.",
+     "communityCards": [
+      "Jc",
+      "Jd",
+      "Qd"
+     ],
+     "timestamp": 1794561073188
+    },
+    {
+     "agentId": "house-2",
+     "agent": "VIPER",
+     "stage": "flop",
+     "position": "BTN",
+     "action": "call",
+     "amount": 305,
+     "pot": 964,
+     "stack": 825,
+     "tableStacks": {
+      "you": 399,
+      "house-1": 670,
+      "house-2": 825,
+      "house-3": 1142
+     },
+     "latencyMs": 0,
+     "reason": "One pair on the button, about 36% to win against 1 opponent. Calling 305 into 659 needs 32%, so it calls.",
+     "communityCards": [
+      "Jc",
+      "Jd",
+      "Qd"
+     ],
+     "timestamp": 1794561073188
+    },
+    {
+     "agentId": "you",
+     "agent": "NIGHTOWL",
+     "stage": "turn",
+     "position": "BB",
+     "action": "all-in",
+     "amount": 399,
+     "pot": 1363,
+     "stack": 0,
+     "tableStacks": {
+      "you": 0,
+      "house-1": 670,
+      "house-2": 825,
+      "house-3": 1142
+     },
+     "latencyMs": 0,
+     "reason": "Three of a kind in the big blind, about 88% to win against 1 opponent. Short stack, so it moves all in.",
+     "communityCards": [
+      "Jc",
+      "Jd",
+      "Qd",
+      "6d"
+     ],
+     "timestamp": 1794561073188
+    },
+    {
+     "agentId": "house-2",
+     "agent": "VIPER",
+     "stage": "turn",
+     "position": "BTN",
+     "action": "call",
+     "amount": 399,
+     "pot": 1762,
+     "stack": 426,
+     "tableStacks": {
+      "you": 0,
+      "house-1": 670,
+      "house-2": 426,
+      "house-3": 1142
+     },
+     "latencyMs": 0,
+     "reason": "One pair on the button, about 41% to win against 1 opponent. Calling 399 into 1363 needs 23%, so it calls.",
+     "communityCards": [
+      "Jc",
+      "Jd",
+      "Qd",
+      "6d"
+     ],
+     "timestamp": 1794561073188
+    }
+   ],
+   "winnerIds": [
+    "you"
+   ],
+   "payouts": {
+    "you": 1762,
+    "house-1": 0,
+    "house-2": 0,
+    "house-3": 0
+   },
+   "winningHand": "three of a kind"
+  },
+  "lastHand": {
+   "handNumber": 17,
+   "button": 0,
+   "smallBlind": 40,
+   "bigBlind": 80,
+   "startStacks": {
+    "you": 2741,
+    "house-1": 0,
+    "house-2": 0,
+    "house-3": 1259
+   },
+   "holeCards": {
+    "you": [
+     "3s",
+     "Kc"
+    ],
+    "house-3": [
+     "Qs",
+     "Qh"
+    ]
+   },
+   "communityCards": [
+    "3d",
+    "6h",
+    "9c",
+    "8d",
+    "Kh"
+   ],
+   "pot": 2518,
+   "endStacks": {
+    "you": 4000,
+    "house-1": 0,
+    "house-2": 0,
+    "house-3": 0
+   },
+   "decisions": [
+    {
+     "agentId": "you",
+     "agent": "NIGHTOWL",
+     "stage": "preflop",
+     "position": "BTN",
+     "action": "call",
+     "amount": 40,
+     "pot": 160,
+     "stack": 2661,
+     "tableStacks": {
+      "you": 2661,
+      "house-3": 1179
+     },
+     "latencyMs": 0,
+     "reason": "King-3 on the button, about 53% to win against 1 opponent. Calling 40 into 120 needs 25%, so it calls.",
+     "communityCards": [],
+     "timestamp": 1794561073214
+    },
+    {
+     "agentId": "house-3",
+     "agent": "MIRAGE",
+     "stage": "preflop",
+     "position": "SB",
+     "action": "check",
+     "amount": 0,
+     "pot": 160,
+     "stack": 1179,
+     "tableStacks": {
+      "you": 2661,
+      "house-3": 1179
+     },
+     "latencyMs": 0,
+     "reason": "Pocket queens in the small blind, about 81% to win against 1 opponent. Checks.",
+     "communityCards": [],
+     "timestamp": 1794561073214
+    },
+    {
+     "agentId": "house-3",
+     "agent": "MIRAGE",
+     "stage": "flop",
+     "position": "SB",
+     "action": "raise",
+     "amount": 212,
+     "raiseTarget": 212,
+     "pot": 372,
+     "stack": 967,
+     "tableStacks": {
+      "you": 2661,
+      "house-3": 967
+     },
+     "latencyMs": 0,
+     "reason": "One pair in the small blind, about 85% to win against 1 opponent. Raises to 212 for value.",
+     "communityCards": [
+      "3d",
+      "6h",
+      "9c"
+     ],
+     "timestamp": 1794561073214
+    },
+    {
+     "agentId": "you",
+     "agent": "NIGHTOWL",
+     "stage": "flop",
+     "position": "BTN",
+     "action": "call",
+     "amount": 212,
+     "pot": 584,
+     "stack": 2449,
+     "tableStacks": {
+      "you": 2449,
+      "house-3": 967
+     },
+     "latencyMs": 0,
+     "reason": "One pair on the button, about 61% to win against 1 opponent. Calling 212 into 372 needs 36%, so it calls.",
+     "communityCards": [
+      "3d",
+      "6h",
+      "9c"
+     ],
+     "timestamp": 1794561073214
+    },
+    {
+     "agentId": "house-3",
+     "agent": "MIRAGE",
+     "stage": "turn",
+     "position": "SB",
+     "action": "raise",
+     "amount": 561,
+     "raiseTarget": 561,
+     "pot": 1145,
+     "stack": 406,
+     "tableStacks": {
+      "you": 2449,
+      "house-3": 406
+     },
+     "latencyMs": 1,
+     "reason": "One pair in the small blind, about 78% to win against 1 opponent. Raises to 561 for value.",
+     "communityCards": [
+      "3d",
+      "6h",
+      "9c",
+      "8d"
+     ],
+     "timestamp": 1794561073215
+    },
+    {
+     "agentId": "you",
+     "agent": "NIGHTOWL",
+     "stage": "turn",
+     "position": "BTN",
+     "action": "call",
+     "amount": 561,
+     "pot": 1706,
+     "stack": 1888,
+     "tableStacks": {
+      "you": 1888,
+      "house-3": 406
+     },
+     "latencyMs": 0,
+     "reason": "One pair on the button, about 50% to win against 1 opponent. Calling 561 into 1145 needs 33%, so it calls.",
+     "communityCards": [
+      "3d",
+      "6h",
+      "9c",
+      "8d"
+     ],
+     "timestamp": 1794561073215
+    },
+    {
+     "agentId": "house-3",
+     "agent": "MIRAGE",
+     "stage": "river",
+     "position": "SB",
+     "action": "all-in",
+     "amount": 406,
+     "pot": 2112,
+     "stack": 0,
+     "tableStacks": {
+      "you": 1888,
+      "house-3": 0
+     },
+     "latencyMs": 0,
+     "reason": "One pair in the small blind, about 81% to win against 1 opponent. Short stack, so it moves all in.",
+     "communityCards": [
+      "3d",
+      "6h",
+      "9c",
+      "8d",
+      "Kh"
+     ],
+     "timestamp": 1794561073215
+    },
+    {
+     "agentId": "you",
+     "agent": "NIGHTOWL",
+     "stage": "river",
+     "position": "BTN",
+     "action": "call",
+     "amount": 406,
+     "pot": 2518,
+     "stack": 1482,
+     "tableStacks": {
+      "you": 1482,
+      "house-3": 0
+     },
+     "latencyMs": 0,
+     "reason": "Two pair on the button, about 90% to win against 1 opponent. Calling 406 into 2112 needs 16%, so it calls.",
+     "communityCards": [
+      "3d",
+      "6h",
+      "9c",
+      "8d",
+      "Kh"
+     ],
+     "timestamp": 1794561073215
+    }
+   ],
+   "winnerIds": [
+    "you"
+   ],
+   "payouts": {
+    "you": 2518,
+    "house-3": 0
+   },
+   "winningHand": "two pair"
+  },
+  "handsTotal": 17,
+  "standings": [
+   {
+    "id": "you",
+    "name": "NIGHTOWL",
+    "stack": 4000,
+    "place": 1
+   },
+   {
+    "id": "house-3",
+    "name": "MIRAGE",
+    "stack": 0,
+    "place": 2
+   },
+   {
+    "id": "house-1",
+    "name": "GRANITE",
+    "stack": 0,
+    "place": 3
+   },
+   {
+    "id": "house-2",
+    "name": "VIPER",
+    "stack": 0,
+    "place": 4
+   }
+  ],
+  "you": {
+   "place": 1,
+   "net": 3000,
+   "handsWon": 5,
+   "vpip": 0.47058823529411764
+  }
+ },
+ "match": {
+  "id": "26ef5698-e873-40ba-9721-4901aadf1f70",
+  "name": "Opening Night",
+  "entryNear": "0.5",
+  "potNear": "2",
+  "capacity": 4,
+  "shares": [
+   7000,
+   3000
+  ],
+  "hands": 15,
+  "seedCommitment": "ce1a7bbe365fdcb29139fc2ab6843a7cd95d00729cbc2713cf8bafa00413ad3f",
+  "rosterHash": "a820cb6f0492a0d5d77535d15f6c909ea1e993dc087b652836c2ad6820ef251c",
+  "resultHash": "1fde4f422a63da480be382715d82cdabfbc73fa2f6dcd0dcf048b77d00aef6a4",
+  "replayHash": "546b7df2f4613d8a83535dba16f727e5b357327aaadf9139ccf71a604c4f84f9",
+  "stacks": {
+   "4233282c-5215-47d9-96a9-ca2788b706c1": 0,
+   "75044771-5807-42bc-9368-b6ff7708cded": 0,
+   "d1870daa-4451-4d72-bf35-86a50e3482c4": 0,
+   "fc0d46a7-8543-4a9b-9316-f08a34e4aad8": 4000
+  },
+  "ranking": [
+   "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+   "75044771-5807-42bc-9368-b6ff7708cded",
+   "4233282c-5215-47d9-96a9-ca2788b706c1",
+   "d1870daa-4451-4d72-bf35-86a50e3482c4"
+  ],
+  "payouts": [
+   {
+    "agent": "house-mirage-a66a.agent-arena-ad7b13.testnet",
+    "amount": "1400000000000000000000000"
+   },
+   {
+    "agent": "house-granite-a66a.agent-arena-ad7b13.testnet",
+    "amount": "600000000000000000000000"
+   }
+  ],
+  "entries": [
+   {
+    "agentId": "75044771-5807-42bc-9368-b6ff7708cded",
+    "state": "entered",
+    "nearAccount": "house-granite-a66a.agent-arena-ad7b13.testnet"
+   },
+   {
+    "agentId": "d1870daa-4451-4d72-bf35-86a50e3482c4",
+    "state": "entered",
+    "nearAccount": "house-viper-a66a.agent-arena-ad7b13.testnet"
+   },
+   {
+    "agentId": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+    "state": "entered",
+    "nearAccount": "house-mirage-a66a.agent-arena-ad7b13.testnet"
+   },
+   {
+    "agentId": "4233282c-5215-47d9-96a9-ca2788b706c1",
+    "state": "entered",
+    "nearAccount": "lantern.agent-arena-ad7b13.testnet"
+   }
+  ],
+  "randomness": {
+   "status": "verified",
+   "output_hex": "7164c6b1a7abbb8cb23d1da08652eef54c61d38617f8e7a6f996fc65f4943198",
+   "alpha": "vrf:36139:arena-op-ad7b13.testnet:arena-26ef5698-e873-40ba-9721-4901aadf1f70",
+   "signature_hex": "8ac2b8438dee0d53d816392e0376196c7030226cf714f672ca515fff4755b1678c0f0aa8cbcd2f4f20d73bbb7152cf8cabd72e7dcdbda94065de0f25180e0f00"
+  },
+  "revealedSeed": "1cef5b4cc0130cc3b52bad7b674d0287986b1e466cf88a06cb3c2649c5cea096",
+  "lastHand": {
+   "pot": 1980,
+   "stage": "showdown",
+   "button": 0,
+   "endedAt": 1794541956463,
+   "payouts": {
+    "75044771-5807-42bc-9368-b6ff7708cded": 0,
+    "fc0d46a7-8543-4a9b-9316-f08a34e4aad8": 1980
+   },
+   "players": [
+    {
+     "id": "75044771-5807-42bc-9368-b6ff7708cded",
+     "name": "HOUSE GRANITE",
+     "stack": 0,
+     "folded": false,
+     "holeCards": [],
+     "contribution": 780
+    },
+    {
+     "id": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+     "name": "HOUSE MIRAGE",
+     "stack": 4000,
+     "folded": false,
+     "holeCards": [],
+     "contribution": 1200
+    }
+   ],
+   "decisions": [
+    {
+     "pot": 120,
+     "agent": "HOUSE GRANITE",
+     "stack": 700,
+     "stage": "preflop",
+     "action": "raise",
+     "amount": 60,
+     "reason": "Raised within the legal range returned by the game engine.",
+     "agentId": "75044771-5807-42bc-9368-b6ff7708cded",
+     "position": "BTN",
+     "latencyMs": 411,
+     "timestamp": 1794541953922,
+     "raiseTarget": 80,
+     "tableStacks": {
+      "75044771-5807-42bc-9368-b6ff7708cded": 700,
+      "fc0d46a7-8543-4a9b-9316-f08a34e4aad8": 3180
+     },
+     "communityCards": []
+    },
+    {
+     "pot": 200,
+     "agent": "HOUSE MIRAGE",
+     "stack": 3100,
+     "stage": "preflop",
+     "action": "raise",
+     "amount": 80,
+     "reason": "Raised within the legal range returned by the game engine.",
+     "agentId": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+     "position": "SB",
+     "latencyMs": 369,
+     "timestamp": 1794541954292,
+     "raiseTarget": 120,
+     "tableStacks": {
+      "75044771-5807-42bc-9368-b6ff7708cded": 700,
+      "fc0d46a7-8543-4a9b-9316-f08a34e4aad8": 3100
+     },
+     "communityCards": []
+    },
+    {
+     "pot": 280,
+     "agent": "HOUSE GRANITE",
+     "stack": 620,
+     "stage": "preflop",
+     "action": "raise",
+     "amount": 80,
+     "reason": "Raised within the legal range returned by the game engine.",
+     "agentId": "75044771-5807-42bc-9368-b6ff7708cded",
+     "position": "BTN",
+     "latencyMs": 392,
+     "timestamp": 1794541954684,
+     "raiseTarget": 160,
+     "tableStacks": {
+      "75044771-5807-42bc-9368-b6ff7708cded": 620,
+      "fc0d46a7-8543-4a9b-9316-f08a34e4aad8": 3100
+     },
+     "communityCards": []
+    },
+    {
+     "pot": 360,
+     "agent": "HOUSE MIRAGE",
+     "stack": 3020,
+     "stage": "preflop",
+     "action": "raise",
+     "amount": 80,
+     "reason": "Raised within the legal range returned by the game engine.",
+     "agentId": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+     "position": "SB",
+     "latencyMs": 379,
+     "timestamp": 1794541955063,
+     "raiseTarget": 200,
+     "tableStacks": {
+      "75044771-5807-42bc-9368-b6ff7708cded": 620,
+      "fc0d46a7-8543-4a9b-9316-f08a34e4aad8": 3020
+     },
+     "communityCards": []
+    },
+    {
+     "pot": 440,
+     "agent": "HOUSE GRANITE",
+     "stack": 540,
+     "stage": "preflop",
+     "action": "raise",
+     "amount": 80,
+     "reason": "Raised within the legal range returned by the game engine.",
+     "agentId": "75044771-5807-42bc-9368-b6ff7708cded",
+     "position": "BTN",
+     "latencyMs": 525,
+     "timestamp": 1794541955588,
+     "raiseTarget": 240,
+     "tableStacks": {
+      "75044771-5807-42bc-9368-b6ff7708cded": 540,
+      "fc0d46a7-8543-4a9b-9316-f08a34e4aad8": 3020
+     },
+     "communityCards": []
+    },
+    {
+     "pot": 1440,
+     "agent": "HOUSE MIRAGE",
+     "stack": 2020,
+     "stage": "preflop",
+     "action": "raise",
+     "amount": 1000,
+     "reason": "Raised within the legal range returned by the game engine.",
+     "agentId": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+     "position": "SB",
+     "latencyMs": 445,
+     "timestamp": 1794541956033,
+     "raiseTarget": 1200,
+     "tableStacks": {
+      "75044771-5807-42bc-9368-b6ff7708cded": 540,
+      "fc0d46a7-8543-4a9b-9316-f08a34e4aad8": 2020
+     },
+     "communityCards": []
+    },
+    {
+     "pot": 1980,
+     "agent": "HOUSE GRANITE",
+     "stack": 0,
+     "stage": "preflop",
+     "action": "all-in",
+     "amount": 540,
+     "reason": "Committed the remaining stack.",
+     "agentId": "75044771-5807-42bc-9368-b6ff7708cded",
+     "position": "BTN",
+     "latencyMs": 429,
+     "timestamp": 1794541956463,
+     "tableStacks": {
+      "75044771-5807-42bc-9368-b6ff7708cded": 0,
+      "fc0d46a7-8543-4a9b-9316-f08a34e4aad8": 2020
+     },
+     "communityCards": []
+    }
+   ],
+   "startedAt": 1794541953511,
+   "winnerIds": [
+    "fc0d46a7-8543-4a9b-9316-f08a34e4aad8"
+   ],
+   "handNumber": 15,
+   "communityCards": [
+    "4s",
+    "Jd",
+    "2s",
+    "4h",
+    "3s"
+   ]
+  }
+ },
+ "ops": [
+  {
+   "method": "create_tournament",
+   "signer": "operator",
+   "state": "confirmed",
+   "tx": "8gJDTeQJ7uv8jXuLU4UrK6zHQs84j3LpFrvQuH6YRTyT"
+  },
+  {
+   "method": "enter",
+   "signer": "house-granite-a66a.agent-arena-ad7b13.testnet",
+   "state": "confirmed",
+   "tx": "2u9mBZW5uQuMGjLdnQu7Gd4xPME5Z3yuqK8cJgNnyjhB"
+  },
+  {
+   "method": "deposit",
+   "signer": "operator",
+   "state": "confirmed",
+   "tx": "4TxRNWf5khW7RJcHFaKrZYrYkgJqVwSprSmz4YJqbmoY"
+  },
+  {
+   "method": "enter",
+   "signer": "house-viper-a66a.agent-arena-ad7b13.testnet",
+   "state": "confirmed",
+   "tx": "6gG9u87tCUhRLEJz3P3rWTFQyrN9y9gdKB7wt3TQnrcU"
+  },
+  {
+   "method": "deposit",
+   "signer": "operator",
+   "state": "confirmed",
+   "tx": "8rbQg3oLuuVdSYZryqMRpM2tmPZwvQcamR5q7K4YtX5x"
+  },
+  {
+   "method": "enter",
+   "signer": "house-mirage-a66a.agent-arena-ad7b13.testnet",
+   "state": "confirmed",
+   "tx": "HLDaMH5psXaKbHeuyCkjrfeUbeMRqhwxnths9GbVr38P"
+  },
+  {
+   "method": "enter",
+   "signer": "lantern.agent-arena-ad7b13.testnet",
+   "state": "confirmed",
+   "tx": "6G76JcUZRcuQtjA3WqXiMjMZKh7sXevzHKMmGH9F7BWm"
+  },
+  {
+   "method": "request_randomness",
+   "signer": "operator",
+   "state": "confirmed",
+   "tx": "8k5948UBVtTSFCTc6JqbSSzTtmwpj8HtvMHVmk56ePyg"
+  },
+  {
+   "method": "finalize_verified",
+   "signer": "operator",
+   "state": "confirmed",
+   "tx": "BaJXtpRq6dNaq4qsJFU3k2srNtJiNRB3PQdtyFfcjfLp"
+  }
+ ],
+ "receipts": [
+  {
+   "hand": 15,
+   "agent": "HOUSE GRANITE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "45953830b5f94b2dbcb69b31f67fe849",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 15,
+   "agent": "HOUSE MIRAGE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "0efb25377ca64108a7e67ee254708324",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 15,
+   "agent": "HOUSE GRANITE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "18ada20a5a79487c902e14d408e5247e",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 15,
+   "agent": "HOUSE MIRAGE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "ee037df6bf5942abaefb0200f3b2b293",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 15,
+   "agent": "HOUSE GRANITE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "05bed1ac59184a63b77d86a1a6be79f8",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 15,
+   "agent": "HOUSE MIRAGE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "b9b28a8c81664e78bb313ef6fdfa6e7d",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 15,
+   "agent": "HOUSE GRANITE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "b70dcdac03874a5c8f36bc3a084d0407",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 14,
+   "agent": "HOUSE GRANITE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "18ae61d138f84098957cfacddf56bda0",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 14,
+   "agent": "HOUSE MIRAGE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "065bd11e8fdf4f3683f2f362e449fc26",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 13,
+   "agent": "HOUSE GRANITE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "8a5ecd71594643048e8a435705f30dba",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 12,
+   "agent": "HOUSE GRANITE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "3068664693e24f599c29dd2d23059178",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 12,
+   "agent": "HOUSE MIRAGE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "aad695ca45a24a98b5b26cb8e1db6b68",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 11,
+   "agent": "HOUSE GRANITE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "04999d110d194dbea786e5525ccc45e4",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 10,
+   "agent": "HOUSE GRANITE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "6da2bf4a62934dbfa39441d6e57d3d9f",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 10,
+   "agent": "HOUSE MIRAGE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "82b1b891c78b4be28715d417693c3317",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 9,
+   "agent": "LANTERN",
+   "model": "z-ai/glm-5.3-flash",
+   "chat": "41575239be754677b6e1127a2e721f46",
+   "kind": "provider_tee",
+   "signer": "0x3b753B4406613C5E70ae640508632b600424fA0c",
+   "verified": true
+  },
+  {
+   "hand": 9,
+   "agent": "HOUSE MIRAGE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "4445cbedaa7b4463ad1ff3baebf75c05",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 9,
+   "agent": "LANTERN",
+   "model": "z-ai/glm-5.3-flash",
+   "chat": "3bf43673abb4421b84d0d03e1ddeb98d",
+   "kind": "provider_tee",
+   "signer": "0x3b753B4406613C5E70ae640508632b600424fA0c",
+   "verified": true
+  },
+  {
+   "hand": 9,
+   "agent": "LANTERN",
+   "model": "z-ai/glm-5.3-flash",
+   "chat": "7f447799333e496abdc5422b84db049d",
+   "kind": "provider_tee",
+   "signer": "0x3b753B4406613C5E70ae640508632b600424fA0c",
+   "verified": true
+  },
+  {
+   "hand": 9,
+   "agent": "HOUSE MIRAGE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "2b382af0b5084d9b97873db83f1ade9a",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 9,
+   "agent": "LANTERN",
+   "model": "z-ai/glm-5.3-flash",
+   "chat": "b20349a5c03c4266b22bb16ff478797c",
+   "kind": "provider_tee",
+   "signer": "0x3b753B4406613C5E70ae640508632b600424fA0c",
+   "verified": true
+  },
+  {
+   "hand": 9,
+   "agent": "LANTERN",
+   "model": "z-ai/glm-5.3-flash",
+   "chat": "d6147dbfbeb4488981ec391a9d7b6c2b",
+   "kind": "provider_tee",
+   "signer": "0x3b753B4406613C5E70ae640508632b600424fA0c",
+   "verified": true
+  },
+  {
+   "hand": 9,
+   "agent": "HOUSE MIRAGE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "3fd2fb3bc51d496f8fad123ce9d8e886",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 9,
+   "agent": "LANTERN",
+   "model": "z-ai/glm-5.3-flash",
+   "chat": "139177da86c947e49cd3cd29d5a51c0c",
+   "kind": "provider_tee",
+   "signer": "0x3b753B4406613C5E70ae640508632b600424fA0c",
+   "verified": true
+  },
+  {
+   "hand": 9,
+   "agent": "HOUSE GRANITE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "cf00f3de139b4f96b4388ab9aecc69ac",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 9,
+   "agent": "LANTERN",
+   "model": "z-ai/glm-5.3-flash",
+   "chat": "006fe07485e545f3a19c26e65fba122a",
+   "kind": "provider_tee",
+   "signer": "0x3b753B4406613C5E70ae640508632b600424fA0c",
+   "verified": true
+  },
+  {
+   "hand": 9,
+   "agent": "HOUSE MIRAGE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "db2889237f9e4eb381067c73d92747b9",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 8,
+   "agent": "HOUSE MIRAGE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "ea501ee5d6624df9aa892accf3abbccd",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 8,
+   "agent": "LANTERN",
+   "model": "z-ai/glm-5.3-flash",
+   "chat": "27b55576f32f4390b6af9e5709cce952",
+   "kind": "provider_tee",
+   "signer": "0x3b753B4406613C5E70ae640508632b600424fA0c",
+   "verified": true
+  },
+  {
+   "hand": 8,
+   "agent": "HOUSE MIRAGE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "30631a813fd04a91bae4e17f3acc5ea0",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 8,
+   "agent": "LANTERN",
+   "model": "z-ai/glm-5.3-flash",
+   "chat": "3a194cf6474944f9b0907661a0df3a5f",
+   "kind": "provider_tee",
+   "signer": "0x3b753B4406613C5E70ae640508632b600424fA0c",
+   "verified": true
+  },
+  {
+   "hand": 8,
+   "agent": "HOUSE MIRAGE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "f1bd7a5a3c5643f5882a4dfe313fac8a",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 8,
+   "agent": "HOUSE GRANITE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "16175eeb8fbb4f808091646edfbaf24d",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 7,
+   "agent": "HOUSE GRANITE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "16097076c5a3479bb1f3633732238de9",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 6,
+   "agent": "HOUSE VIPER",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "7952818da2ee49c29a17dbfcbf5db58a",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 6,
+   "agent": "HOUSE MIRAGE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "1646b8fe69df40ebae8d5d8c1c053e46",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 6,
+   "agent": "HOUSE VIPER",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "d7abc2fee0424fee801074bde3e1de3b",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 6,
+   "agent": "HOUSE GRANITE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "24846e0994aa4b2796841f83ec0daa73",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 6,
+   "agent": "LANTERN",
+   "model": "z-ai/glm-5.3-flash",
+   "chat": "a5ed814f95924d71b7612e225c806e00",
+   "kind": "provider_tee",
+   "signer": "0x3b753B4406613C5E70ae640508632b600424fA0c",
+   "verified": true
+  },
+  {
+   "hand": 5,
+   "agent": "LANTERN",
+   "model": "z-ai/glm-5.3-flash",
+   "chat": "e676ec16175e4a05a67ebc6cbaec7872",
+   "kind": "provider_tee",
+   "signer": "0x3b753B4406613C5E70ae640508632b600424fA0c",
+   "verified": true
+  },
+  {
+   "hand": 5,
+   "agent": "HOUSE VIPER",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "175168e78cb14f6687e13e90382592a1",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 5,
+   "agent": "HOUSE GRANITE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "ba0f0bb98e2e4f70b41553abeb89e454",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 5,
+   "agent": "LANTERN",
+   "model": "z-ai/glm-5.3-flash",
+   "chat": "b744b39015a248b4b413572712849ccf",
+   "kind": "provider_tee",
+   "signer": "0x3b753B4406613C5E70ae640508632b600424fA0c",
+   "verified": true
+  },
+  {
+   "hand": 5,
+   "agent": "HOUSE MIRAGE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "5e98aa16d09f4d6391f669e91a3726a1",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 4,
+   "agent": "HOUSE GRANITE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "677ae7b174ea44f28d1f2e363143289f",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 4,
+   "agent": "LANTERN",
+   "model": "z-ai/glm-5.3-flash",
+   "chat": "55895558305e46a1b85b619b80bffbd5",
+   "kind": "provider_tee",
+   "signer": "0x3b753B4406613C5E70ae640508632b600424fA0c",
+   "verified": true
+  },
+  {
+   "hand": 4,
+   "agent": "HOUSE MIRAGE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "45720e84f5714159aa99e70434c479c4",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 4,
+   "agent": "HOUSE VIPER",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "7ff3d70a59e84c929c5c5e10f3cc4eb6",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 3,
+   "agent": "HOUSE MIRAGE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "37e34ee353324a598619558966b81029",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 3,
+   "agent": "HOUSE VIPER",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "56df3815b4174fd5b93b6673b71e08b9",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 3,
+   "agent": "HOUSE GRANITE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "345be586321e4a4e98e2cbc8f2c56836",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 2,
+   "agent": "HOUSE MIRAGE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "3432166702ba4837a2a9d54637e2b6d0",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 2,
+   "agent": "HOUSE VIPER",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "f308cd7917df44dc88f51c219d83aaff",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 2,
+   "agent": "HOUSE MIRAGE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "e4f7c3c6fa484921bbe105fd92a29f75",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 2,
+   "agent": "HOUSE VIPER",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "ae039ba865a346098dc806fedca57584",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 2,
+   "agent": "HOUSE MIRAGE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "806525f8d07b4f6b9053474d81164acf",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 2,
+   "agent": "HOUSE VIPER",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "7e28a7e25f1941f0977cc7c02e00ed7a",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 2,
+   "agent": "HOUSE GRANITE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "e5538fd2b8664efd817d9e8b70c83fbc",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 2,
+   "agent": "LANTERN",
+   "model": "z-ai/glm-5.3-flash",
+   "chat": "19f1b08485834ec3b1d0108cd145c9f2",
+   "kind": "provider_tee",
+   "signer": "0x3b753B4406613C5E70ae640508632b600424fA0c",
+   "verified": true
+  },
+  {
+   "hand": 1,
+   "agent": "HOUSE GRANITE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "a6b4a1e62e47450cbc7deebf93183186",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  },
+  {
+   "hand": 1,
+   "agent": "LANTERN",
+   "model": "z-ai/glm-5.3-flash",
+   "chat": "d1ef68d41a104519ab8875651af265d6",
+   "kind": "provider_tee",
+   "signer": "0x3b753B4406613C5E70ae640508632b600424fA0c",
+   "verified": true
+  },
+  {
+   "hand": 1,
+   "agent": "HOUSE MIRAGE",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "chat": "962fad38a859426582a0930e8f1d92bb",
+   "kind": "provider_tee",
+   "signer": "0xfDBd7952498B333206f360D71d97a1e0961e8DDF",
+   "verified": true
+  }
+ ],
+ "notes": [
+  {
+   "hand": 1,
+   "seq": 0,
+   "agentId": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+   "note": "UTG position with weak suited connectors is too risky to open against three opponents."
+  },
+  {
+   "hand": 1,
+   "seq": 1,
+   "agentId": "4233282c-5215-47d9-96a9-ca2788b706c1",
+   "note": "J6 offsuit is too weak to call even 20; folding preserves equity for better spots."
+  },
+  {
+   "hand": 1,
+   "seq": 2,
+   "agentId": "75044771-5807-42bc-9368-b6ff7708cded",
+   "note": "Conservative strategy dictates folding weak off-suit connectors from the small blind pre-flop."
+  },
+  {
+   "hand": 2,
+   "seq": 0,
+   "agentId": "4233282c-5215-47d9-96a9-ca2788b706c1",
+   "note": "K9s from UTG against three players lacks the equity and position to justify calling; folding is correct."
+  },
+  {
+   "hand": 2,
+   "seq": 1,
+   "agentId": "75044771-5807-42bc-9368-b6ff7708cded",
+   "note": "Conservative strategy requires strong hands; 3-A offsuit is too weak to play from the button."
+  },
+  {
+   "hand": 2,
+   "seq": 2,
+   "agentId": "d1870daa-4451-4d72-bf35-86a50e3482c4",
+   "note": "Aggressive strategy with strong hand in SB, applying early pressure."
+  },
+  {
+   "hand": 2,
+   "seq": 3,
+   "agentId": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+   "note": "Stealing the pot with Ace-high from the Big Blind against a single caller fits the bluff-heavy strategy."
+  },
+  {
+   "hand": 2,
+   "seq": 4,
+   "agentId": "d1870daa-4451-4d72-bf35-86a50e3482c4",
+   "note": "Aggressive strategy with strong hand in SB demands pressure to isolate the remaining opponent."
+  },
+  {
+   "hand": 2,
+   "seq": 5,
+   "agentId": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+   "note": "Bluffing with Ace-high to steal the pot from the remaining opponent in late position."
+  },
+  {
+   "hand": 2,
+   "seq": 6,
+   "agentId": "d1870daa-4451-4d72-bf35-86a50e3482c4",
+   "note": "Aggressive strategy with strong hand in late position demands maximum pressure to steal the pot."
+  },
+  {
+   "hand": 2,
+   "seq": 7,
+   "agentId": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+   "note": "Bluffing with Ace-high to steal the pot against a short-stacked opponent."
+  },
+  {
+   "hand": 3,
+   "seq": 0,
+   "agentId": "75044771-5807-42bc-9368-b6ff7708cded",
+   "note": "Q4o is a weak hand from UTG; conservative strategy dictates folding to avoid losing chips with a marginal holding."
+  },
+  {
+   "hand": 3,
+   "seq": 1,
+   "agentId": "d1870daa-4451-4d72-bf35-86a50e3482c4",
+   "note": "BTN position with suited connectors allows aggressive all-in to steal blinds and exploit opponents."
+  },
+  {
+   "hand": 3,
+   "seq": 2,
+   "agentId": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+   "note": "Weak hand in SB against active opponents; bluffing here is too risky."
+  },
+  {
+   "hand": 4,
+   "seq": 0,
+   "agentId": "d1870daa-4451-4d72-bf35-86a50e3482c4",
+   "note": "Stack is short; aggressive shove with Q-high exploits opponents' likely tightness and folds."
+  },
+  {
+   "hand": 4,
+   "seq": 1,
+   "agentId": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+   "note": "4sJh is weak in a multi-way pot with short stacks; bluffing here is too risky."
+  },
+  {
+   "hand": 4,
+   "seq": 2,
+   "agentId": "4233282c-5215-47d9-96a9-ca2788b706c1",
+   "note": "T9s3h offsuit is too weak to complete; folding saves the 20 with negative equity versus two players."
+  },
+  {
+   "hand": 4,
+   "seq": 3,
+   "agentId": "75044771-5807-42bc-9368-b6ff7708cded",
+   "note": "Conservative strategy requires strong hands; AsTh is weak in BB, but folding is too passive against a short stack."
+  },
+  {
+   "hand": 5,
+   "seq": 0,
+   "agentId": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+   "note": "Playing a weak hand from early position is too risky despite the bluff-heavy strategy."
+  },
+  {
+   "hand": 5,
+   "seq": 1,
+   "agentId": "4233282c-5215-47d9-96a9-ca2788b706c1",
+   "note": "Calling 20 into a 30 pot with suited jack on the button clears required equity cheaply."
+  },
+  {
+   "hand": 5,
+   "seq": 2,
+   "agentId": "75044771-5807-42bc-9368-b6ff7708cded",
+   "note": "Conservative strategy dictates folding weak off-suit connectors in early position to preserve stack."
+  },
+  {
+   "hand": 5,
+   "seq": 3,
+   "agentId": "d1870daa-4451-4d72-bf35-86a50e3482c4",
+   "note": "Aggressive strategy with Ace-high in BB; shove to steal pot and apply maximum pressure."
+  },
+  {
+   "hand": 5,
+   "seq": 4,
+   "agentId": "4233282c-5215-47d9-96a9-ca2788b706c1",
+   "note": "Pot odds justify calling 50 into 100 with J6s from the button heads-up."
+  },
+  {
+   "hand": 6,
+   "seq": 0,
+   "agentId": "4233282c-5215-47d9-96a9-ca2788b706c1",
+   "note": "56s suited is too weak to open from UTG with three players behind."
+  },
+  {
+   "hand": 6,
+   "seq": 1,
+   "agentId": "75044771-5807-42bc-9368-b6ff7708cded",
+   "note": "Conservative strategy dictates folding weak suited connectors from late position against active opponents."
+  },
+  {
+   "hand": 6,
+   "seq": 2,
+   "agentId": "d1870daa-4451-4d72-bf35-86a50e3482c4",
+   "note": "Aggressive strategy dictates applying pressure with a min-raise to steal the pot from the remaining opponent."
+  },
+  {
+   "hand": 6,
+   "seq": 3,
+   "agentId": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+   "note": "Bluffing with Ace-high to steal the pot against a short-stacked opponent."
+  },
+  {
+   "hand": 6,
+   "seq": 4,
+   "agentId": "d1870daa-4451-4d72-bf35-86a50e3482c4",
+   "note": "Aggressive strategy with short stack and loose hand to apply maximum pressure on the remaining opponent."
+  },
+  {
+   "hand": 7,
+   "seq": 1,
+   "agentId": "75044771-5807-42bc-9368-b6ff7708cded",
+   "note": "Q9s is weak in the SB against an active opponent; conservative strategy dictates folding marginal hands pre-flop."
+  },
+  {
+   "hand": 8,
+   "seq": 0,
+   "agentId": "75044771-5807-42bc-9368-b6ff7708cded",
+   "note": "Conservative strategy dictates folding weak off-suit connectors pre-flop to preserve stack."
+  },
+  {
+   "hand": 8,
+   "seq": 1,
+   "agentId": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+   "note": "Stealing the blinds with a bluff from the small blind against a folded opponent."
+  },
+  {
+   "hand": 8,
+   "seq": 2,
+   "agentId": "4233282c-5215-47d9-96a9-ca2788b706c1",
+   "note": "Calling 20 into a 60 pot gives 4:1 odds, easily paying for a suited connector preflop."
+  },
+  {
+   "hand": 8,
+   "seq": 3,
+   "agentId": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+   "note": "Weak hand in SB with no fold equity; checking preserves stack and avoids committing chips with 2-9 offsuit."
+  },
+  {
+   "hand": 8,
+   "seq": 4,
+   "agentId": "4233282c-5215-47d9-96a9-ca2788b706c1",
+   "note": "Open-ended straight draw with equity; checking keeps pot odds free and avoids bloating the pot out of position."
+  },
+  {
+   "hand": 8,
+   "seq": 5,
+   "agentId": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+   "note": "Bluffing with a scare card on the board to steal the pot as a bluff-heavy agent."
+  },
+  {
+   "hand": 9,
+   "seq": 0,
+   "agentId": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+   "note": "Stealing the blinds from the button with Ace-high to exploit tight opponents."
+  },
+  {
+   "hand": 9,
+   "seq": 1,
+   "agentId": "4233282c-5215-47d9-96a9-ca2788b706c1",
+   "note": "Suited jack-eight has enough multiway equity to justify calling 50 into a 140 pot."
+  },
+  {
+   "hand": 9,
+   "seq": 2,
+   "agentId": "75044771-5807-42bc-9368-b6ff7708cded",
+   "note": "K3o is too weak to play from the Big Blind against unknown opponents with a conservative strategy."
+  },
+  {
+   "hand": 9,
+   "seq": 3,
+   "agentId": "4233282c-5215-47d9-96a9-ca2788b706c1",
+   "note": "Middle pair on an ace board with no bet facing; checking controls pot and keeps range narrow."
+  },
+  {
+   "hand": 9,
+   "seq": 4,
+   "agentId": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+   "note": "Steal pot with bluff on wet board; opponent is short-stacked and likely folding."
+  },
+  {
+   "hand": 9,
+   "seq": 5,
+   "agentId": "4233282c-5215-47d9-96a9-ca2788b706c1",
+   "note": "Second pair with pot odds of 4.5-to-1 justifies a cheap call against one opponent."
+  },
+  {
+   "hand": 9,
+   "seq": 6,
+   "agentId": "4233282c-5215-47d9-96a9-ca2788b706c1",
+   "note": "Second pair weak kicker on paired board; check and call cheaply rather than build a big pot."
+  },
+  {
+   "hand": 9,
+   "seq": 7,
+   "agentId": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+   "note": "Bluffing with backdoor flush and straight draws to steal the pot from the remaining opponent."
+  },
+  {
+   "hand": 9,
+   "seq": 8,
+   "agentId": "4233282c-5215-47d9-96a9-ca2788b706c1",
+   "note": "Second pair with cheap 60 call; pot odds justify seeing river without risking more."
+  },
+  {
+   "hand": 9,
+   "seq": 9,
+   "agentId": "4233282c-5215-47d9-96a9-ca2788b706c1",
+   "note": "I hold a full house, eights full of fives, so I raise for value against the remaining opponent."
+  },
+  {
+   "hand": 9,
+   "seq": 10,
+   "agentId": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+   "note": "Bluffing with Ace-high to steal the pot against a short-stacked opponent."
+  },
+  {
+   "hand": 9,
+   "seq": 11,
+   "agentId": "4233282c-5215-47d9-96a9-ca2788b706c1",
+   "note": "I hold a full house, eights full; with only 370 behind into a 2710 pot, shoving extracts maximum value."
+  },
+  {
+   "hand": 10,
+   "seq": 0,
+   "agentId": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+   "note": "Stealing the blinds from the button with a bluff-heavy strategy against a short-stacked opponent."
+  },
+  {
+   "hand": 10,
+   "seq": 1,
+   "agentId": "75044771-5807-42bc-9368-b6ff7708cded",
+   "note": "Conservative strategy requires strong hands; A-T offsuit is too weak to play from the small blind."
+  },
+  {
+   "hand": 11,
+   "seq": 0,
+   "agentId": "75044771-5807-42bc-9368-b6ff7708cded",
+   "note": "Q2o is too weak to play from the button against a remaining opponent with a conservative strategy."
+  },
+  {
+   "hand": 12,
+   "seq": 0,
+   "agentId": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+   "note": "Bluffing from the button with suited connectors to steal the blinds and ante."
+  },
+  {
+   "hand": 12,
+   "seq": 1,
+   "agentId": "75044771-5807-42bc-9368-b6ff7708cded",
+   "note": "Q-8 offsuit is weak in the small blind against a remaining opponent; conservative strategy dictates folding marginal hands."
+  },
+  {
+   "hand": 13,
+   "seq": 0,
+   "agentId": "75044771-5807-42bc-9368-b6ff7708cded",
+   "note": "Conservative strategy dictates folding weak off-suit cards from late position to preserve stack."
+  },
+  {
+   "hand": 14,
+   "seq": 0,
+   "agentId": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+   "note": "Stealing blinds with suited connectors from the button fits the bluff-heavy strategy."
+  },
+  {
+   "hand": 14,
+   "seq": 1,
+   "agentId": "75044771-5807-42bc-9368-b6ff7708cded",
+   "note": "K5o is too weak to play from the small blind against a live opponent."
+  },
+  {
+   "hand": 15,
+   "seq": 0,
+   "agentId": "75044771-5807-42bc-9368-b6ff7708cded",
+   "note": "Strong hand in late position warrants a standard min-raise to build the pot against a single opponent."
+  },
+  {
+   "hand": 15,
+   "seq": 1,
+   "agentId": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+   "note": "Bluffing from SB with suited connector to steal the blinds and ante."
+  },
+  {
+   "hand": 15,
+   "seq": 2,
+   "agentId": "75044771-5807-42bc-9368-b6ff7708cded",
+   "note": "Strong hand in late position warrants a standard min-raise to build the pot against a single opponent."
+  },
+  {
+   "hand": 15,
+   "seq": 3,
+   "agentId": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+   "note": "Bluffing from SB with suited connector to steal the pot against a short-stacked opponent."
+  },
+  {
+   "hand": 15,
+   "seq": 4,
+   "agentId": "75044771-5807-42bc-9368-b6ff7708cded",
+   "note": "Strong hand in late position warrants a standard min-raise to build the pot against a single opponent."
+  },
+  {
+   "hand": 15,
+   "seq": 5,
+   "agentId": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+   "note": "Bluffing with suited connector in SB to steal pot against short stack."
+  },
+  {
+   "hand": 15,
+   "seq": 6,
+   "agentId": "75044771-5807-42bc-9368-b6ff7708cded",
+   "note": "Pocket Kings are premium; all-in maximizes value against a single opponent with a deep stack."
+  }
+ ],
+ "attestation": {
+  "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+  "nonce": "5e1f1027d6832f1187d801d04d62dfc961d2e09496d824fead362ba824e042dc",
+  "checkedAt": "2026-11-13T08:50:46.579Z",
+  "nonceEchoed": true,
+  "modelSigners": [
+   "0xfdbd7952498b333206f360d71d97a1e0961e8ddf"
+  ],
+  "gatewaySigners": [
+   "0xb98a789cdc4817275f5155593ba73ef2a957e779"
+  ],
+  "gpu": {
+   "overallResult": true,
+   "nonceMatch": true,
+   "gpus": [
+    {
+     "key": "GPU-0",
+     "hwmodel": "GH100",
+     "secureBoot": true,
+     "measurement": "success"
+    },
+    {
+     "key": "GPU-1",
+     "hwmodel": "GH100",
+     "secureBoot": true,
+     "measurement": "success"
+    },
+    {
+     "key": "GPU-2",
+     "hwmodel": "GH100",
+     "secureBoot": true,
+     "measurement": "success"
+    },
+    {
+     "key": "GPU-3",
+     "hwmodel": "GH100",
+     "secureBoot": true,
+     "measurement": "success"
+    },
+    {
+     "key": "GPU-4",
+     "hwmodel": "GH100",
+     "secureBoot": true,
+     "measurement": "success"
+    },
+    {
+     "key": "GPU-5",
+     "hwmodel": "GH100",
+     "secureBoot": true,
+     "measurement": "success"
+    },
+    {
+     "key": "GPU-6",
+     "hwmodel": "GH100",
+     "secureBoot": true,
+     "measurement": "success"
+    },
+    {
+     "key": "GPU-7",
+     "hwmodel": "GH100",
+     "secureBoot": true,
+     "measurement": "success"
+    }
+   ]
+  },
+  "intelQuotePresent": true,
+  "verified": true,
+  "notes": [
+   "NVIDIA NRAS JWT claims are decoded; the JWT signature itself is not checked against NVIDIA JWKS in this build."
+  ]
+ },
+ "quote": {
+  "source": "USDC on Base",
+  "destination": "wNEAR on NEAR mainnet",
+  "dry": true,
+  "amountIn": "3.588677",
+  "amountInUsd": "3.587097982120",
+  "amountOut": "1.0",
+  "timeEstimateSeconds": 37,
+  "recipient": "intents.near",
+  "authenticated": false,
+  "note": "Dry-run quote from the NEAR Intents 1Click API. Intents settle on mainnet; this arena deployment runs on NEAR testnet, so no swap is executed."
+ },
+ "wallets": {
+  "nightowl": {
+   "agentId": "b00633a4-0493-40ba-af78-f18d4f97f2b4",
+   "nearAccount": "nightowl.agent-arena-ad7b13.testnet",
+   "explorer": "https://testnet.nearblocks.io/address/nightowl.agent-arena-ad7b13.testnet",
+   "contractId": "agent-arena-ad7b13.testnet",
+   "arenaBalanceYocto": "0",
+   "arenaBalanceNear": "0",
+   "accountBalanceNear": "0.1",
+   "onchainRecord": {
+    "owner": "a3aa779f21e8549ca8e9aeff01e4b62c1a6bfc0ee8bf211e002c5c334436a0d4",
+    "balance": "0",
+    "created_at_ms": 1794535194598,
+    "tournaments": 0,
+    "wins": 0,
+    "winnings": "0"
+   },
+   "accessKeys": [
+    {
+     "publicKey": "ed25519:C1tDaVvSTHM6W5dbbhX7iubjLabpZaQ5sBT8QVBAhfT9",
+     "permission": "FullAccess",
+     "role": "owner wallet (full access)"
+    },
+    {
+     "publicKey": "ed25519:ESL58ZEwph6uWC3SWSm9LXX2jRjHpmmrxt8ECy9SG4JE",
+     "permission": {
+      "receiverId": "agent-arena-ad7b13.testnet",
+      "methodNames": [
+       "enter",
+       "withdraw"
+      ],
+      "allowance": "250000000000000000000000"
+     },
+     "role": "arena server (restricted)"
+    }
+   ],
+   "trophies": [],
+   "createTx": "https://testnet.nearblocks.io/txns/57BpMKYtJhmqCY7Jat9gewjeL4uqR6xJ4E3cnjF66k1a"
+  },
+  "mirage": {
+   "agentId": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+   "nearAccount": "house-mirage-a66a.agent-arena-ad7b13.testnet",
+   "explorer": "https://testnet.nearblocks.io/address/house-mirage-a66a.agent-arena-ad7b13.testnet",
+   "contractId": "agent-arena-ad7b13.testnet",
+   "arenaBalanceYocto": "1400000000000000000000000",
+   "arenaBalanceNear": "1.4",
+   "accountBalanceNear": "0.0994",
+   "onchainRecord": {
+    "owner": "0afa5701f0395f909e2e0fff92e41c08d90318b9fde3e0c6858526bd6f46fa46",
+    "balance": "1400000000000000000000000",
+    "created_at_ms": 1794531823027,
+    "tournaments": 2,
+    "wins": 1,
+    "winnings": "1400000000000000000000000"
+   },
+   "accessKeys": [
+    {
+     "publicKey": "ed25519:jrUmnc9XfRCgjyi2dBCUiL43yFgXZMR2LRw47Mgfu1P",
+     "permission": "FullAccess",
+     "role": "owner wallet (full access)"
+    },
+    {
+     "publicKey": "ed25519:3kFSxzNRYZ3twgzDgK7w16V3xhb9Gy6RoLqCD8rJydJo",
+     "permission": {
+      "receiverId": "agent-arena-ad7b13.testnet",
+      "methodNames": [
+       "enter",
+       "withdraw"
+      ],
+      "allowance": "249486065894381000000000"
+     },
+     "role": "arena server (restricted)"
+    }
+   ],
+   "trophies": [
+    {
+     "tokenId": "podium",
+     "balance": "1"
+    },
+    {
+     "tokenId": "champion",
+     "balance": "1"
+    },
+    {
+     "tokenId": "trophy:26ef5698-e873-40ba-9721-4901aadf1f70",
+     "balance": "1"
+    }
+   ],
+   "createTx": "https://testnet.nearblocks.io/txns/DL3zPderpSjfxSTuJbMyfK1EdrKh2WaKY3YFxKKg8xbw"
+  }
+ },
+ "agents": [
+  {
+   "id": "4233282c-5215-47d9-96a9-ca2788b706c1",
+   "name": "LANTERN",
+   "nearAccount": "lantern.agent-arena-ad7b13.testnet",
+   "model": "z-ai/glm-5.3-flash",
+   "strategy": "Mathematical",
+   "house": false
+  },
+  {
+   "id": "7162f0d2-cca6-457d-92c5-06ee91ae4787",
+   "name": "MERIDIAN",
+   "nearAccount": "meridian.agent-arena-ad7b13.testnet",
+   "model": "z-ai/glm-5.3-flash",
+   "strategy": "Mathematical",
+   "house": false
+  },
+  {
+   "id": "b00633a4-0493-40ba-af78-f18d4f97f2b4",
+   "name": "NIGHTOWL",
+   "nearAccount": "nightowl.agent-arena-ad7b13.testnet",
+   "model": "z-ai/glm-5.3-flash",
+   "strategy": "Mathematical",
+   "house": false
+  },
+  {
+   "id": "fc0d46a7-8543-4a9b-9316-f08a34e4aad8",
+   "name": "HOUSE MIRAGE",
+   "nearAccount": "house-mirage-a66a.agent-arena-ad7b13.testnet",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "strategy": "Bluff Heavy",
+   "house": true
+  },
+  {
+   "id": "d1870daa-4451-4d72-bf35-86a50e3482c4",
+   "name": "HOUSE VIPER",
+   "nearAccount": "house-viper-a66a.agent-arena-ad7b13.testnet",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "strategy": "Aggressive",
+   "house": true
+  },
+  {
+   "id": "75044771-5807-42bc-9368-b6ff7708cded",
+   "name": "HOUSE GRANITE",
+   "nearAccount": "house-granite-a66a.agent-arena-ad7b13.testnet",
+   "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "strategy": "Conservative",
+   "house": true
+  }
+ ]
+}
