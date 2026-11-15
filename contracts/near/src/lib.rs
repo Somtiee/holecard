@@ -164,6 +164,18 @@ pub struct SettlementVerifier {
     pub project_id: String,
 }
 
+/// Policies are frozen at registration without changing the existing tournament storage layout.
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug)]
+pub struct TournamentVerificationConfig {
+    pub randomness_source: Option<RandomnessSource>,
+    pub settlement_verifier: Option<SettlementVerifier>,
+}
+
+fn verification_config_key(id: &str) -> Vec<u8> {
+    format!("tournament_verification:{id}").into_bytes()
+}
+
 #[near(serializers = [borsh])]
 #[derive(Clone, Debug)]
 pub struct PendingSettlement {
@@ -455,10 +467,44 @@ impl Arena {
         let owner = record.owner.clone();
         self.agents.insert(agent.clone(), record);
         env::log_str(&format!(
-            "EVENT_JSON:{{\"event\":\"withdraw\",\"agent\":\"{agent}\",\"to\":\"{owner}\",\"amount\":\"{}\"}}",
+            "EVENT_JSON:{{\"event\":\"withdraw_requested\",\"agent\":\"{agent}\",\"to\":\"{owner}\",\"amount\":\"{}\"}}",
             amount.0
         ));
-        Promise::new(owner).transfer(NearToken::from_yoctonear(amount.0))
+        Promise::new(owner)
+            .transfer(NearToken::from_yoctonear(amount.0))
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(CALLBACK_GAS)
+                    .on_withdraw_resolved(agent, amount),
+            )
+    }
+
+    #[private]
+    pub fn on_withdraw_resolved(
+        &mut self,
+        agent: AccountId,
+        amount: U128,
+        #[callback_result] result: Result<(), PromiseError>,
+    ) -> bool {
+        let event = if result.is_ok() {
+            "withdraw"
+        } else {
+            let mut record = self.agent(&agent);
+            record.balance = U128(
+                record
+                    .balance
+                    .0
+                    .checked_add(amount.0)
+                    .expect("BALANCE_OVERFLOW"),
+            );
+            self.agents.insert(agent.clone(), record);
+            "withdraw_refunded"
+        };
+        env::log_str(&format!(
+            "EVENT_JSON:{{\"event\":\"{event}\",\"agent\":\"{agent}\",\"amount\":\"{}\"}}",
+            amount.0
+        ));
+        result.is_ok()
     }
 
     // ---------- tournaments ----------
@@ -552,6 +598,11 @@ impl Arena {
             payouts: vec![],
             randomness: None,
         };
+        let verification = self.current_verification_config();
+        env::storage_write(
+            &verification_config_key(&id),
+            &near_sdk::borsh::to_vec(&verification).expect("SERIALIZE_VERIFICATION_CONFIG"),
+        );
         self.tournaments.insert(id.clone(), tournament.clone());
         env::log_str(&format!(
             "EVENT_JSON:{{\"event\":\"tournament_created\",\"id\":\"{id}\",\"roster_hash\":\"{}\"}}",
@@ -616,10 +667,21 @@ impl Arena {
         let now = env::block_timestamp_ms();
         let unfilled = t.state == TournamentState::Registration
             && now >= t.registration_deadline_ms
-            && t.entered.len() < t.shares.len().max(2);
+            && (self.paused || t.entered.len() < t.shares.len().max(2));
         let expired = t.state == TournamentState::Running
             && now > t.started_at_ms + t.duration_ms + t.grace_ms;
-        require!(unfilled || expired, "CANNOT_CANCEL");
+        // With required VRF absent, no hand could have been dealt by the arena. End the wait
+        // at the playing deadline, even if the randomness provider still has a request in flight.
+        let no_entropy = t.state == TournamentState::Running
+            && now >= t.started_at_ms + t.duration_ms
+            && self
+                .frozen_verification_config(&t.id)
+                .is_some_and(|config| config.randomness_source.is_some())
+            && !t
+                .randomness
+                .as_ref()
+                .is_some_and(|r| r.status == "verified");
+        require!(unfilled || expired || no_entropy, "CANNOT_CANCEL");
         for agent_id in t.entered.clone() {
             let mut agent = self.agent(&agent_id);
             agent.balance = U128(agent.balance.0 + t.entry_fee.0);
@@ -646,7 +708,9 @@ impl Arena {
     ) -> Tournament {
         self.assert_operator();
         require!(
-            self.settlement_verifier().is_none(),
+            self.verification_config(&tournament_id)
+                .settlement_verifier
+                .is_none(),
             "VERIFIED_SETTLEMENT_REQUIRED"
         );
         require!(is_hash(&replay_hash), "INVALID_EVIDENCE");
@@ -673,7 +737,8 @@ impl Arena {
     ) -> Promise {
         self.assert_operator();
         let verifier = self
-            .settlement_verifier()
+            .verification_config(&tournament_id)
+            .settlement_verifier
             .unwrap_or_else(|| env::panic_str("NO_SETTLEMENT_VERIFIER"));
         let fee = env::attached_deposit();
         require!(
@@ -686,6 +751,7 @@ impl Arena {
             env::storage_read(&pending_key(&tournament_id)).is_none(),
             "SETTLEMENT_CHECK_IN_FLIGHT"
         );
+        require!(!hands.is_empty(), "EMPTY_REPLAY");
         let replay_hash = sha256_hex(hands.join("\n").as_bytes());
         let pending = PendingSettlement {
             ranking: ranking.clone(),
@@ -759,6 +825,10 @@ impl Arena {
                 Some(format!("RANKING_MISMATCH:{}", out.ranking.join(",")))
             }
             Some(_) if t.state != TournamentState::Running => Some("NOT_RUNNING".into()),
+            Some(_) if env::block_timestamp_ms() > t.started_at_ms + t.duration_ms + t.grace_ms => {
+                Some("SETTLEMENT_EXPIRED".into())
+            }
+            Some(_) if self.paused => Some("PAUSED".into()),
             Some(_) => None,
         };
         if let Some(reason) = reason {
@@ -840,8 +910,8 @@ impl Arena {
     #[payable]
     pub fn request_randomness(&mut self, tournament_id: String) -> Promise {
         let source = self
+            .verification_config(&tournament_id)
             .randomness_source
-            .clone()
             .unwrap_or_else(|| env::panic_str("NO_RANDOMNESS_SOURCE"));
         let fee = env::attached_deposit();
         require!(
@@ -850,6 +920,10 @@ impl Arena {
         );
         let mut t = self.tournament(&tournament_id);
         require!(t.state == TournamentState::Running, "NOT_RUNNING");
+        require!(
+            env::block_timestamp_ms() < t.started_at_ms + t.duration_ms,
+            "RANDOMNESS_WINDOW_CLOSED"
+        );
         require!(t.randomness.is_none(), "RANDOMNESS_ALREADY_REQUESTED");
         t.randomness = Some(Randomness {
             status: "requested".into(),
@@ -886,6 +960,15 @@ impl Arena {
         #[callback_result] result: Result<Option<VrfResponse>, PromiseError>,
     ) -> bool {
         let mut t = self.tournament(&tournament_id);
+        if t.state != TournamentState::Running
+            || env::block_timestamp_ms() >= t.started_at_ms + t.duration_ms
+            || !t
+                .randomness
+                .as_ref()
+                .is_some_and(|r| r.status == "requested")
+        {
+            return false;
+        }
         let verified = result
             .ok()
             .flatten()
@@ -921,7 +1004,7 @@ impl Arena {
     /// Checks the Ed25519 VRF proof and that the signed alpha names this tournament.
     /// Returns sha256(signature), the VRF output, as hex.
     fn verify_vrf(&self, tournament_id: &str, entry: &VrfEntry) -> Option<String> {
-        let source = self.randomness_source.as_ref()?;
+        let source = self.verification_config(tournament_id).randomness_source?;
         let key: [u8; 32] = from_hex(&source.vrf_pubkey_hex)?.try_into().ok()?;
         let sig: [u8; 64] = from_hex(&entry.signature_hex)?.try_into().ok()?;
         let parts: Vec<&str> = entry.alpha.split(':').collect();
@@ -1067,7 +1150,40 @@ impl Arena {
             .collect()
     }
 
+    pub fn get_tournament_verification_config(
+        &self,
+        id: String,
+    ) -> Option<near_sdk::serde_json::Value> {
+        self.tournaments.get(&id)?;
+        let frozen = self.frozen_verification_config(&id);
+        let pinned = frozen.is_some();
+        let config = frozen.unwrap_or_else(|| self.current_verification_config());
+        Some(json!({
+            "pinned": pinned,
+            "randomness_source": config.randomness_source,
+            "settlement_verifier": config.settlement_verifier,
+        }))
+    }
+
     // ---------- internals ----------
+
+    fn current_verification_config(&self) -> TournamentVerificationConfig {
+        TournamentVerificationConfig {
+            randomness_source: self.randomness_source.clone(),
+            settlement_verifier: self.settlement_verifier(),
+        }
+    }
+
+    fn frozen_verification_config(&self, id: &str) -> Option<TournamentVerificationConfig> {
+        env::storage_read(&verification_config_key(id))
+            .map(|raw| near_sdk::borsh::from_slice(&raw).expect("INVALID_VERIFICATION_CONFIG"))
+    }
+
+    fn verification_config(&self, id: &str) -> TournamentVerificationConfig {
+        // Existing tournaments predate the snapshot and retain the global policy.
+        self.frozen_verification_config(id)
+            .unwrap_or_else(|| self.current_verification_config())
+    }
 
     fn settlement_verifier(&self) -> Option<SettlementVerifier> {
         env::storage_read(VERIFIER_KEY).and_then(|raw| near_sdk::borsh::from_slice(&raw).ok())
@@ -1084,6 +1200,7 @@ impl Arena {
         require!(!self.paused, "PAUSED");
         require!(
             t.state == TournamentState::Running
+                && env::block_timestamp_ms() >= t.started_at_ms + t.duration_ms
                 && env::block_timestamp_ms() <= t.started_at_ms + t.duration_ms + t.grace_ms,
             "CANNOT_FINALIZE"
         );
@@ -1095,7 +1212,7 @@ impl Arena {
             require!(t.entered.contains(agent_id), "NOT_ENTRANT");
             require!(!ranking[..i].contains(agent_id), "DUPLICATE_RANK");
         }
-        if self.randomness_source.is_some() {
+        if self.verification_config(&t.id).randomness_source.is_some() {
             require!(
                 t.randomness
                     .as_ref()

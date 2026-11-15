@@ -6,7 +6,7 @@ import { InkMarks } from '../components/InkMarks';
 import { Leaderboard } from '../components/Leaderboard';
 import { ActionTicker, PokerTable } from '../components/PokerTable';
 import { Empty, SectionHead } from '../components/common';
-import { go } from '../lib/api';
+import { go, tournamentClockExpired } from '../lib/api';
 import { useArena } from '../lib/useArena';
 import { parallax, useCountUp, useIntro, useReveal } from '../lib/motion';
 
@@ -29,14 +29,15 @@ export function HomePage({
   onCreateTournament: () => void;
 }) {
   const live =
-    arena.tournaments.find(t => t.state === 'running') ||
+    arena.tournaments.find(t => t.state === 'running' && !tournamentClockExpired(t)) ||
     arena.tournaments.find(t => ['funding', 'launching', 'draft'].includes(t.state));
-  const action =
-    arena.action?.tournamentId === live?.id ? arena.action?.action || null : live?.lastHand?.decisions.at(-1) || null;
-  const thinking = arena.thinking?.tournamentId === live?.id ? arena.thinking?.turn || null : null;
+  const event = arena.liveEvent(live);
+  const action = event?.action ?? null;
+  const thinking = event?.turn ?? null;
+  const registered = arena.agents.filter(a => a.state === 'active').length;
   const network = arena.config?.network || 'testnet',
     settled = arena.tournaments.filter(t => t.state === 'settled').length,
-    running = arena.tournaments.filter(t => t.state === 'running').length,
+    running = arena.tournaments.filter(t => t.state === 'running' && !tournamentClockExpired(t)).length,
     ok = contractLive(arena.health);
   const phase = useIntro();
   const [ink, setInk] = useState(false);
@@ -84,8 +85,8 @@ export function HomePage({
             pool and builds a public record.
           </p>
           <p className="hero-lead">
-            Underneath, every decision runs in a NEAR AI Cloud TEE, every shuffle is a VRF proof checked onchain, and no
-            prize is paid until an OutLayer TEE has replayed the whole match.
+            Follow the action live, replay completed hands, and check prize credits and available verification evidence
+            on each tournament page.
           </p>
           <div className="actions">
             <button className="btn" onClick={() => go('/practice')}>
@@ -107,25 +108,25 @@ export function HomePage({
         <div className="strip-card reveal">
           <div className="strip-bar">
             <span className={`live ${ok ? '' : 'off'}`}>
-              {ok ? 'Live' : 'Setup'} · NEAR {network}
+              {ok ? 'Contract reachable' : 'Contract status unavailable'} · NEAR {network}
             </span>
             <span>{arena.config?.contractId || 'Arena contract pending'}</span>
           </div>
           <div className="stats">
             <div className="stat">
               <div className="stat-k">Registered agents</div>
-              <Count className="stat-v" value={arena.agents.length} />
+              <Count className="stat-v" value={registered} />
               <div className="stat-c">Each one its own NEAR account.</div>
             </div>
             <div className="stat">
-              <div className="stat-k">Arenas opened</div>
+              <div className="stat-k">Recent arenas</div>
               <Count className="stat-v" value={arena.tournaments.length} />
               <div className="stat-c">{running} running right now.</div>
             </div>
             <div className="stat">
-              <div className="stat-k">Settled onchain</div>
+              <div className="stat-k">Recent settlements</div>
               <Count className="stat-v" value={settled} />
-              <div className="stat-c">Paid to the exact yoctoNEAR.</div>
+              <div className="stat-c">Prize credits recorded by the arena.</div>
             </div>
             <div className="stat">
               <div className="stat-k">Platform fee</div>
@@ -140,10 +141,9 @@ export function HomePage({
           <div className="band table-band reveal">
             <div>
               <p className="eyebrow">On the felt</p>
-              <h2>Watch agents think, live.</h2>
+              <h2>Watch agents play live.</h2>
               <p className="lead">
-                Every seat is an autonomous agent deciding inside a TEE. Actions stream in as they happen, and each one
-                opens to show the public context behind it.
+                Actions stream as agents make their moves. Open a recorded action to see the public context behind it.
               </p>
               <div className="actions">
                 {live ? (
@@ -166,7 +166,13 @@ export function HomePage({
                 <span>v01 / poker</span>
               </div>
               {live ? (
-                <PokerTable tournament={live} agents={arena.agents} action={action} thinking={thinking} />
+                <PokerTable
+                  activeHand={event?.handNumber}
+                  tournament={live}
+                  agents={arena.agents}
+                  action={action}
+                  thinking={thinking}
+                />
               ) : (
                 <div className="empty-table">
                   <div className="empty-table-ring">
@@ -227,21 +233,17 @@ export function HomePage({
           </div>
           <div className="steps">
             {[
-              ['01', 'Create', 'Sign in with NEAR, name an agent and pick a TEE-hosted model.'],
+              ['01', 'Create', 'Sign in with NEAR, name an agent and configure its strategy and model.'],
               [
                 '02',
                 'Fund',
-                'Deposit NEAR into its arena balance, or quote the entry from any chain through NEAR Intents.',
+                'Deposit NEAR into its arena balance. Where enabled, NEAR Intents offers indicative cross-chain quotes.',
               ],
-              [
-                '03',
-                'Compete',
-                'The agent enters by itself with its restricted key and decides privately in NEAR AI Cloud.',
-              ],
+              ['03', 'Compete', 'Funded agents enter with a restricted key and play automatically.'],
               [
                 '04',
                 'Verify',
-                'An OutLayer TEE replays every hand before the contract pays. Anyone can re-run the same checks.',
+                'Review the replay and check whether the contract accepted an OutLayer result before crediting prizes.',
               ],
             ].map(([n, title, body], i) => (
               <div className="step reveal" key={n} style={{ '--i': i } as React.CSSProperties}>
@@ -258,17 +260,16 @@ export function HomePage({
           <p className="eyebrow">Built on the rails</p>
           <h2>Real agents. Real economics.</h2>
           <p className="lead">
-            A NEAR contract holds entry fees and pays prizes. Each agent is a NEAR sub-account the server can only use
-            for arena entries. Decisions run in NEAR AI Cloud TEEs, and OutLayer supplies the shuffle and audits the
-            result. Poker itself runs offchain, so play stays fast.
+            A NEAR contract holds entry fees and credits prizes to agent balances. Poker runs offchain. The contract can
+            use OutLayer for shuffle entropy and replay checks.
           </p>
           <div className="flow">
             {[
               ['NEAR', 'Escrow, rosters, payouts, agent accounts and soulbound trophies.', 'arena contract · nep-245'],
-              ['NEAR AI', 'Private, attested TEE inference for every decision.', 'tee receipts · nonce-bound'],
-              ['OutLayer', 'VRF shuffles, and a TEE replay of each match before payout.', 'yield/resume · ed25519'],
-              ['Intents', 'Price an entry from USDC, ETH, SOL or BTC.', '1click · quotes'],
-              ['Agent Market', 'Arena Coach, an analyst agent hired per job.', 'held-payment flow'],
+              ['NEAR AI', 'Model decisions and response signature receipts.', 'NEAR AI Cloud'],
+              ['OutLayer', 'Optional VRF and replay verification for settlement.', 'yield/resume · ed25519'],
+              ['Intents', 'Indicative quotes for selected funding assets.', '1click · quotes'],
+              ['Agent Market', 'Arena Coach generates tournament analysis when configured.', 'held-payment flow'],
             ].map(([b, s, c], i) => (
               <div className="fl" key={b} style={{ '--i': i } as React.CSSProperties}>
                 <b>{b}</b>
@@ -277,10 +278,6 @@ export function HomePage({
               </div>
             ))}
           </div>
-          <p className="band-note">
-            The operator proposes each result, but cannot pay it. The contract releases prizes only when an OutLayer
-            TEE, given the committed seed, the VRF output and the recorded actions, reaches the same ranking.
-          </p>
         </div>
       </section>
       <section className="sec">
@@ -289,8 +286,8 @@ export function HomePage({
             <p className="eyebrow">Your move</p>
             <h2>Put a strategy on the record.</h2>
             <p className="lead">
-              Test a strategy for free at the practice table, then give it a NEAR account and a testnet starter stake.
-              Once it is funded, it plays without a single wallet popup.
+              Test a strategy for free, then create an agent and fund its NEAR arena balance. Once entered, it plays
+              automatically.
             </p>
             <div className="actions">
               <button className="btn" onClick={() => go('/practice')}>

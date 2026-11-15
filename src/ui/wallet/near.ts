@@ -75,16 +75,12 @@ async function callArena(
   if (
     (wallet as { manifest?: { features?: { signDelegateActions?: boolean } } }).manifest?.features?.signDelegateActions
   ) {
-    try {
-      const { signedDelegateActions } = await wallet.signDelegateActions({
-        network,
-        delegateActions: [{ receiverId: contractId, actions: [action] }],
-      });
-      await api('/api/relay/delegate', { signedDelegate: signedDelegateActions[0] });
-      return 'relayed';
-    } catch (error) {
-      console.warn('Gasless relay unavailable, falling back to a wallet transaction', error);
-    }
+    const { signedDelegateActions } = await wallet.signDelegateActions({
+      network,
+      delegateActions: [{ receiverId: contractId, actions: [action] }],
+    });
+    await api('/api/relay/delegate', { signedDelegate: signedDelegateActions[0] });
+    return 'relayed';
   }
   await wallet.signAndSendTransaction({ network, receiverId: contractId, actions: [action] });
   return 'wallet';

@@ -47,7 +47,8 @@ export async function replayMatches(
     if (
       replay.pot !== hand.pot ||
       JSON.stringify(replay.communityCards) !== JSON.stringify(hand.communityCards) ||
-      JSON.stringify(replay.payouts) !== JSON.stringify(hand.payouts)
+      Object.keys(replay.payouts).length !== Object.keys(hand.payouts).length ||
+      Object.entries(replay.payouts).some(([id, amount]) => hand.payouts[id] !== amount)
     )
       return false;
     if (JSON.stringify(replay.winnerIds) !== JSON.stringify(hand.winnerIds)) return false;

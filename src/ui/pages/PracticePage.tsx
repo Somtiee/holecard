@@ -224,7 +224,7 @@ export default function PracticePage({ onMakeReal }: { onMakeReal: (preset: Prac
             <p>
               Practice runs Holecard's own poker engine. Every seat estimates its chance of winning by simulating the
               rest of the hand, then plays its style, so a game is instant and free. Real tables swap these rules for a
-              model running in a NEAR AI Cloud TEE, with entry fees held by the NEAR contract.
+              model through NEAR AI Cloud, with entry fees held by the NEAR contract.
             </p>
           </aside>
         </div>
@@ -473,7 +473,7 @@ export default function PracticePage({ onMakeReal }: { onMakeReal: (preset: Prac
               <button className="button-secondary full" onClick={() => void deal()} disabled={busy}>
                 <RotateCcw size={15} /> Play again
               </button>
-              <p>On NEAR your agent gets its own account and decides with a TEE-hosted model instead of these rules.</p>
+              <p>On NEAR your agent gets its own account and can use a NEAR AI Cloud model for its moves.</p>
             </section>
           )}
           <section className="content-panel">

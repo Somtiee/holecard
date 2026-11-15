@@ -1,13 +1,25 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import { ed25519 } from '@noble/curves/ed25519.js';
-import { Account, JsonRpcProvider, KeyPair, PublicKey, actions, baseDecode, type KeyPairString } from 'near-api-js';
+import {
+  Account,
+  JsonRpcProvider,
+  KeyPair,
+  KeyPairSigner,
+  PublicKey,
+  SignedTransaction,
+  actions,
+  baseDecode,
+  baseEncode,
+  createTransaction,
+  type KeyPairString,
+} from 'near-api-js';
 
 /** NEAR network access for the arena. Server keys: the operator key (calls operator-only
  * contract methods) and per-agent function-call keys (can only call enter/withdraw on the arena). */
 export const NEAR_NETWORK = (process.env.NEAR_NETWORK || 'testnet') as 'testnet' | 'mainnet';
-export const NEAR_RPC_URL =
-  process.env.NEAR_RPC_URL ||
-  (NEAR_NETWORK === 'mainnet' ? 'https://free.rpc.fastnear.com' : 'https://test.rpc.fastnear.com');
+export const PUBLIC_NEAR_RPC_URL =
+  NEAR_NETWORK === 'mainnet' ? 'https://free.rpc.fastnear.com' : 'https://test.rpc.fastnear.com';
+const NEAR_RPC_URL = process.env.NEAR_RPC_URL || PUBLIC_NEAR_RPC_URL;
 export const NEAR_EXPLORER = NEAR_NETWORK === 'mainnet' ? 'https://nearblocks.io' : 'https://testnet.nearblocks.io';
 const YOCTO = 10n ** 24n;
 export const contractId = () => {
@@ -46,38 +58,63 @@ export async function view<T>(method: string, args: Record<string, unknown> = {}
   })) as T;
 }
 
-type TxResult = { value: unknown; txHash: string };
-async function call(
-  account: Account,
+async function prepare(
+  sender: string,
+  secret: KeyPairString,
+  lastNonce: bigint,
   method: string,
   args: Record<string, unknown>,
   deposit = 0n,
   gas = GAS,
-): Promise<TxResult> {
-  const outcome = await account.signAndSendTransaction({
-    receiverId: contractId(),
-    waitUntil: 'FINAL',
-    actions: [actions.functionCall(method, args, gas, deposit)],
-  });
-  const status = outcome.status as { SuccessValue?: string; Failure?: unknown };
-  if (status && typeof status === 'object' && 'Failure' in status && status.Failure)
-    throw new Error(`NEAR ${method} failed: ${JSON.stringify(status.Failure).slice(0, 300)}`);
-  // A receipt deeper in the tree can fail even when the top-level status succeeds.
-  const failed = outcome.receipts_outcome?.find(r => 'Failure' in (r.outcome.status as object));
-  if (failed)
-    throw new Error(
-      `NEAR ${method} receipt failed: ${JSON.stringify((failed.outcome.status as { Failure: unknown }).Failure).slice(0, 300)}`,
-    );
-  const raw = status?.SuccessValue;
-  let value: unknown = null;
-  if (raw) {
-    try {
-      value = JSON.parse(Buffer.from(raw, 'base64').toString('utf8'));
-    } catch {
-      value = null;
-    }
+) {
+  const signer = KeyPairSigner.fromSecretKey(secret);
+  const publicKey = await signer.getPublicKey();
+  const [key, block] = await Promise.all([
+    provider.viewAccessKey({ accountId: sender, publicKey, finalityQuery: { finality: 'optimistic' } }),
+    provider.viewBlock({ finality: 'final' }),
+  ]);
+  const chainNonce = BigInt(key.nonce);
+  const nonce = (chainNonce > lastNonce ? chainNonce : lastNonce) + 1n;
+  const transaction = createTransaction(
+    sender,
+    publicKey,
+    contractId(),
+    nonce,
+    [actions.functionCall(method, args, gas, deposit)],
+    baseDecode(block.header.hash),
+  );
+  const { signedTransaction } = await signer.signTransaction(transaction);
+  return {
+    sender,
+    nonce,
+    hash: baseEncode(createHash('sha256').update(transaction.encode()).digest()),
+    bytes: Buffer.from(signedTransaction.encode()).toString('base64'),
+  };
+}
+
+export type PreparedCall = Awaited<ReturnType<typeof prepare>>;
+
+export async function resolveCall(
+  call: Omit<PreparedCall, 'nonce'>,
+): Promise<{ state: 'confirmed'; value: unknown } | { state: 'failed'; error: string } | { state: 'pending' }> {
+  const outcome = await provider
+    // A FINAL query for an unbroadcast hash can wait at the RPC until its long polling deadline.
+    .viewTransactionStatus({ txHash: call.hash, accountId: call.sender, waitUntil: 'NONE' })
+    .catch(() => provider.sendTransactionUntil(SignedTransaction.decode(Buffer.from(call.bytes, 'base64')), 'FINAL'))
+    .catch(() => null);
+  if (!outcome || outcome.final_execution_status !== 'FINAL' || outcome.transaction_outcome?.id !== call.hash)
+    return { state: 'pending' };
+
+  const status = outcome.status;
+  if (!status || typeof status !== 'object') return { state: 'pending' };
+  if ('Failure' in status) return { state: 'failed', error: 'NEAR returned a final execution failure' };
+  if (!('SuccessValue' in status)) return { state: 'pending' };
+  const raw = Buffer.from(status.SuccessValue, 'base64').toString('utf8');
+  try {
+    return { state: 'confirmed', value: JSON.parse(raw) as unknown };
+  } catch {
+    return { state: 'confirmed', value: null };
   }
-  return { value, txHash: outcome.transaction_outcome.id };
 }
 
 /** Raw transaction from the relayer account (defaults to the operator). Returns the base64 SuccessValue. */
@@ -97,8 +134,8 @@ export async function relayerSend(
     throw new Error(`Relayed transaction failed: ${JSON.stringify(status.Failure).slice(0, 300)}`);
   return { txHash: outcome.transaction_outcome.id, successValue: status?.SuccessValue ?? null };
 }
-export function operatorCall(method: string, args: Record<string, unknown>, deposit = 0n, gas = GAS) {
-  return call(new Account(operatorId(), provider, operatorKey()), method, args, deposit, gas);
+export function prepareOperatorCall(method: string, args: Record<string, unknown>, deposit = 0n, gas = GAS) {
+  return (lastNonce: bigint) => prepare(operatorId(), operatorKey(), lastNonce, method, args, deposit, gas);
 }
 
 // ---------- agent function-call keys ----------
@@ -128,14 +165,15 @@ export function newAgentKey(agentAccount: string) {
   return { publicKey: pair.getPublicKey().toString(), sealed: sealAgentKey(agentAccount, pair.toString()) };
 }
 /** Signs with the agent's restricted key. The NEAR protocol rejects anything but enter/withdraw on the arena. */
-export function agentCall(
+export function prepareAgentCall(
   agentAccount: string,
   sealedKey: string,
   method: 'enter' | 'withdraw',
   args: Record<string, unknown>,
 ) {
   // Agent accounts hold ~0.1 NEAR; NEAR reserves prepaid gas up front, so keep it small (enter uses <10 Tgas).
-  return call(new Account(agentAccount, provider, openAgentKey(agentAccount, sealedKey)), method, args, 0n, AGENT_GAS);
+  return (lastNonce: bigint) =>
+    prepare(agentAccount, openAgentKey(agentAccount, sealedKey), lastNonce, method, args, 0n, AGENT_GAS);
 }
 
 /**

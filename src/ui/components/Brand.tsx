@@ -43,7 +43,7 @@ export function Status({ health, network }: { health: Health | null; network?: s
   return (
     <span className={`chain-status ${ok ? 'online' : ''}`}>
       <i />
-      near_{network || 'testnet'} · {ok ? 'live' : 'setup'}
+      near_{network || 'testnet'} · {ok ? 'contract reachable' : 'status unavailable'}
     </span>
   );
 }

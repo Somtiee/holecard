@@ -2,10 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { recoverMessageAddress, type Hex } from 'viem';
 import type { AgentDecision, DecisionContext } from '../../engine/hand';
 
-/** NEAR AI Cloud private inference. Every agent decision (which includes the agent's private hole
- * cards) is sent only to a TEE-hosted model through the NEAR AI Cloud gateway. For each completion
- * we keep the exact request/response hashes and later check the TEE signature over them against the
- * signing addresses from a fresh, nonce-bound attestation report. Prompts are never stored. */
+/** Inference and diagnostic evidence from NEAR AI Cloud. */
 export const NEARAI_BASE_URL = (process.env.NEARAI_BASE_URL || 'https://cloud-api.near.ai').replace(/\/$/, '');
 const apiKey = () => {
   const v = process.env.NEARAI_API_KEY;
@@ -126,7 +123,7 @@ function decodeJwt(token: string) {
   >;
 }
 
-/** Fetches a report bound to a fresh random nonce and checks it the way the NEAR AI docs describe. */
+/** Fetch diagnostic claims. An echoed nonce does not cryptographically bind a quote or key. */
 export async function attestModel(model: string, force = false): Promise<AttestationSummary> {
   if (!allowedModels().includes(model)) throw new Error('Model is not on the arena allowlist');
   const hit = cache.get(model);
@@ -196,8 +193,8 @@ export async function attestModel(model: string, force = false): Promise<Attesta
   const intelQuotePresent = Boolean(
     report.gateway_attestation?.intel_quote || report.model_attestations?.some(a => a.intel_quote),
   );
-  const verified =
-    nonceEchoed && modelSigners.length > 0 && (gpu ? gpu.overallResult && gpu.nonceMatch !== false : false);
+  notes.push('Intel TDX quotes and signer binding are not cryptographically verified by this build.');
+  const verified = false;
   const summary = {
     model,
     nonce,
@@ -234,26 +231,32 @@ export async function verifyReceipt(r: {
     else await new Promise(f => setTimeout(f, 1000));
   }
   const sig = found;
-  if (!sig) return { verified: false, kind: null, signer: null, detail: 'Signature not available yet' };
+  if (!sig) return { signatureChecked: false, kind: null, signer: null, detail: 'Signature not available yet' };
+  const kind = sig.signature_kind;
+  if (!sig.text || !sig.signature)
+    return { signatureChecked: false, kind: null, signer: null, detail: 'Provider did not return signature evidence' };
+  if (kind !== 'provider_tee' && kind !== 'gateway')
+    return { signatureChecked: false, kind: null, signer: null, detail: 'Signature kind is missing or unsupported' };
   const parts = sig.text.split(':');
-  const kind = sig.signature_kind || (parts.length === 3 ? 'provider_tee' : 'gateway');
   if (parts.length !== (kind === 'provider_tee' ? 3 : 2))
-    return { verified: false, kind, signer: null, detail: 'Signature kind does not match signed text' };
+    return { signatureChecked: false, kind, signer: null, detail: 'Signature kind does not match signed text' };
   if (kind === 'provider_tee' && parts[0] !== r.model)
-    return { verified: false, kind, signer: null, detail: 'Signed model id differs' };
+    return { signatureChecked: false, kind, signer: null, detail: 'Signed model id differs' };
   const [reqHash, resHash] = parts.slice(-2);
   if (reqHash !== r.request_hash || resHash !== r.response_hash)
-    return { verified: false, kind, signer: null, detail: 'Signed hashes do not match the exchanged bytes' };
+    return { signatureChecked: false, kind, signer: null, detail: 'Signed hashes do not match the exchanged bytes' };
   const signer = await recoverMessageAddress({ message: sig.text, signature: sig.signature as Hex });
   const attestation = await attestModel(r.model);
-  const expected = (kind === 'gateway' ? attestation.gatewaySigners : attestation.modelSigners).map(a =>
-    a.toLowerCase(),
-  );
-  const ok = expected.includes(signer.toLowerCase());
+  const expected = kind === 'gateway' ? attestation.gatewaySigners : attestation.modelSigners;
+  const signatureChecked =
+    expected.some(a => a.toLowerCase() === signer.toLowerCase()) &&
+    (!sig.signing_address || sig.signing_address.toLowerCase() === signer.toLowerCase());
   return {
-    verified: ok,
+    signatureChecked,
     kind,
     signer,
-    detail: ok ? 'Signer matches an attested TEE key' : 'Signer is not in the attested key set',
+    detail: signatureChecked
+      ? 'Signature matches a reported key and the request/response hashes. Hardware attestation is unverified.'
+      : 'Signature does not match the reported signing key.',
   };
 }

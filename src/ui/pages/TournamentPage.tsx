@@ -15,7 +15,17 @@ import {
 import { RandomnessPanel, SettlementPanel, TeeReceiptsPanel } from '../components/NearPanels';
 import { ActionTicker, PokerTable } from '../components/PokerTable';
 import { CardFace, Empty, Tag } from '../components/common';
-import { api, go, short, timeLeft, type Decision, type Hand, type Operation } from '../lib/api';
+import {
+  api,
+  go,
+  short,
+  timeLeft,
+  tournamentClockExpired,
+  tournamentStatus,
+  type Decision,
+  type Hand,
+  type Operation,
+} from '../lib/api';
 import { useArena } from '../lib/useArena';
 
 export function TournamentPage({
@@ -73,15 +83,15 @@ export function TournamentPage({
     a => a.owner === arena.owner && a.state === 'active' && !t.entries.some(e => e.agentId === a.id),
   );
   const myEntries = t.entries.filter(e => arena.agents.some(a => a.id === e.agentId && a.owner === arena.owner));
-  const action =
-    arena.action?.tournamentId === t.id ? arena.action?.action || null : t.lastHand?.decisions.at(-1) || null;
-  const thinking = arena.thinking?.tournamentId === t.id ? arena.thinking?.turn || null : null;
+  const event = arena.liveEvent(t);
+  const action = event?.action ?? null;
+  const thinking = event?.turn ?? null;
   const invoke = async (path: string, body: unknown = {}) => {
     setBusy(true);
     try {
       await api(path, { method: 'POST', body: JSON.stringify(body) });
       await arena.refresh();
-      notify('Submitted to NEAR. Status updates as soon as the transaction is final.');
+      notify('Arena updated. Onchain actions may still be awaiting confirmation.');
     } catch (error) {
       notify((error as Error).message);
     } finally {
@@ -97,9 +107,15 @@ export function TournamentPage({
         <div>
           <p className="eyebrow">Poker · NEAR · {t.id.slice(0, 8)}</p>
           <h1>{t.name}</h1>
-          <p>Autonomous agents. Private TEE decisions. Prize shares frozen in a NEAR contract.</p>
+          <p>
+            Autonomous poker agents. Entry fees and prize shares are enforced by the arena contract once registration
+            opens.
+          </p>
         </div>
-        <Tag tone={t.state === 'running' ? 'hot' : t.state === 'settled' ? 'mint' : ''}>{t.state}</Tag>
+        {t.decisionPolicy === 'fixture' && <Tag>DETERMINISTIC TEST POLICY</Tag>}
+        <Tag tone={t.state === 'running' && !tournamentClockExpired(t) ? 'hot' : t.state === 'settled' ? 'mint' : ''}>
+          {tournamentStatus(t)}
+        </Tag>
       </div>
       <div className="match-strip">
         <span>
@@ -126,13 +142,25 @@ export function TournamentPage({
           <b>{t.state === 'funding' ? timeLeft(t.closesAt) : `${Math.round(t.durationSeconds / 60)} MIN`}</b>
         </span>
       </div>
+      {tournamentClockExpired(t) && !t.handNumber && !event && (
+        <p className="fund-hint">
+          The time limit passed without a completed hand. Entry fees remain in escrow until the contract confirms
+          cancellation and refunds.
+        </p>
+      )}
       <div className="match-layout">
         <div>
-          <PokerTable tournament={t} agents={arena.agents} action={action} thinking={thinking} />
+          <PokerTable
+            activeHand={event?.handNumber}
+            tournament={t}
+            agents={arena.agents}
+            action={action}
+            thinking={thinking}
+          />
           <ActionTicker action={action} thinking={thinking} />
           <section className="content-panel">
             <div className="panel-heading">
-              <span>LIVE DECISION FEED</span>
+              <span>RECENT RECORDED DECISIONS</span>
               <Radio size={17} />
             </div>
             {(t.lastHand?.decisions || [])
@@ -284,19 +312,29 @@ export function TournamentPage({
             </div>
             <div>
               <small>ECONOMIC STATE</small>
-              <b>{t.rosterHash ? 'ROSTER LOCKED ON NEAR' : 'ROSTER OPEN'}</b>
-              {t.contractId && t.rosterHash && (
-                <a href={`${arena.config?.explorer}/address/${t.contractId}`} target="_blank" rel="noreferrer">
-                  {t.contractId} <ExternalLink size={14} />
-                </a>
-              )}
+              <b>
+                {t.state === 'draft'
+                  ? 'DRAFT'
+                  : t.state === 'launching'
+                    ? 'AWAITING CHAIN CONFIRMATION'
+                    : 'ROSTER SUBMITTED'}
+              </b>
+              {arena.config?.explorer &&
+                t.contractId &&
+                t.rosterHash &&
+                t.state !== 'draft' &&
+                t.state !== 'launching' && (
+                  <a href={`${arena.config?.explorer}/address/${t.contractId}`} target="_blank" rel="noreferrer">
+                    {t.contractId} <ExternalLink size={14} />
+                  </a>
+                )}
             </div>
             <div>
               <small>SEED COMMITMENT</small>
               <b>{short(t.seedCommitment)}</b>
             </div>
             <div>
-              <small>GAME RESULT</small>
+              <small>{t.state === 'settled' ? 'GAME RESULT' : 'PROPOSED RESULT'}</small>
               <b>{t.resultHash ? short(t.resultHash) : 'NOT FINALIZED'}</b>
             </div>
             <div>
@@ -305,8 +343,7 @@ export function TournamentPage({
             </div>
             <p>
               The NEAR contract holds every entry fee, freezes prize shares and commitments, and pays out or refunds to
-              the exact yoctoNEAR. It releases prizes only after an OutLayer TEE replays the match and reaches the same
-              ranking.
+              the exact yoctoNEAR. The verification panel shows whether the contract accepted an OutLayer replay.
             </p>
           </section>
           <SettlementPanel tournamentId={t.id} state={t.state} />
@@ -368,7 +405,7 @@ export function TournamentPage({
       <section className="content-panel tx-panel">
         <div className="panel-heading">
           <span>NEAR TRANSACTIONS</span>
-          <span>FINAL ON NEAR</span>
+          <span>TRANSACTION JOURNAL</span>
         </div>
         {operations.length ? (
           operations.map((op, i) => (
@@ -377,7 +414,7 @@ export function TournamentPage({
               <div>
                 <b>{op.method.toUpperCase()}</b>
                 <small>
-                  SIGNED BY {op.signer === 'operator' ? 'ARENA OPERATOR' : op.signer}
+                  SIGNER {op.signer === 'operator' ? 'ARENA OPERATOR' : op.signer}
                   {op.error ? ` · ${op.error.slice(0, 80)}` : ''}
                 </small>
               </div>
@@ -393,7 +430,7 @@ export function TournamentPage({
           <Empty text="NEAR transactions appear after the roster is locked onchain." />
         )}
       </section>
-      <TeeReceiptsPanel tournamentId={t.id} policy={arena.health?.decisionPolicy} />
+      <TeeReceiptsPanel tournamentId={t.id} />
       {why && (
         <div className="modal-backdrop" onMouseDown={() => setWhy(null)}>
           <div className="why-modal" onMouseDown={e => e.stopPropagation()}>
@@ -431,9 +468,7 @@ export function TournamentPage({
                 LATENCY <b>{why.d.latencyMs} MS</b>
               </span>
             </div>
-            <footer>
-              Model explanations are stored apart from the public hand record and released after settlement.
-            </footer>
+            <footer>When available, model explanations appear after settlement.</footer>
           </div>
         </div>
       )}

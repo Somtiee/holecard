@@ -89,7 +89,7 @@ fn full_roster_starts_and_finalizes_with_exact_payouts() {
     assert_eq!(t.state, TournamentState::Running);
     assert_eq!(t.prize_pool.0, 3 * FEE);
 
-    ctx("operator.testnet", 0, 5 * MIN);
+    ctx("operator.testnet", 0, 11 * MIN);
     let t = arena.finalize(
         "t1".into(),
         hash("result"),
@@ -115,7 +115,7 @@ fn finalize_rejects_wrong_seed() {
         ctx(a, 0, 2_000);
         arena.enter("t1".into());
     }
-    ctx("operator.testnet", 0, 5 * MIN);
+    ctx("operator.testnet", 0, 11 * MIN);
     arena.finalize(
         "t1".into(),
         hash("r"),
@@ -136,7 +136,7 @@ fn finalize_rejects_non_entrant() {
     }
     ctx("anyone.testnet", 0, 20 * MIN);
     arena.start("t1".into());
-    ctx("operator.testnet", 0, 21 * MIN);
+    ctx("operator.testnet", 0, 31 * MIN);
     arena.finalize(
         "t1".into(),
         hash("r"),
@@ -155,7 +155,7 @@ fn only_operator_finalizes() {
         ctx(a, 0, 2_000);
         arena.enter("t1".into());
     }
-    ctx(A, 0, 5 * MIN);
+    ctx(A, 0, 11 * MIN);
     arena.finalize(
         "t1".into(),
         hash("r"),
@@ -255,7 +255,12 @@ fn withdraw_always_pays_owner() {
     assert_eq!(arena.get_agent(acc(A)).unwrap().balance.0, 2 * FEE);
     // The resulting promise is a transfer to alice.testnet, never to the caller.
     let receipts = near_sdk::test_utils::get_created_receipts();
-    assert_eq!(receipts.last().unwrap().receiver_id, acc("alice.testnet"));
+    assert!(receipts
+        .iter()
+        .any(|r| r.receiver_id == acc("alice.testnet")));
+    ctx("arena.testnet", 0, 2_001);
+    assert!(arena.on_withdraw_resolved(acc(A), U128(FEE), Ok(())));
+    assert_eq!(arena.get_agent(acc(A)).unwrap().balance.0, 2 * FEE);
 }
 
 #[test]
@@ -395,7 +400,7 @@ fn verified_vrf_is_stored_and_unlocks_finalize() {
     assert_eq!(r.status, "verified");
     let sig = vrf_key().sign(alpha.as_bytes()).to_bytes();
     assert_eq!(r.output_hex.unwrap(), sha256_hex(&sig));
-    ctx("operator.testnet", 0, 5 * MIN);
+    ctx("operator.testnet", 0, 11 * MIN);
     arena.finalize(
         "t1".into(),
         hash("r"),
@@ -450,7 +455,7 @@ fn finalize_requires_randomness_when_source_is_set() {
     let mut arena = three();
     with_vrf(&mut arena);
     running(&mut arena);
-    ctx("operator.testnet", 0, 5 * MIN);
+    ctx("operator.testnet", 0, 11 * MIN);
     arena.finalize(
         "t1".into(),
         hash("r"),
@@ -478,7 +483,7 @@ fn finalize_mints_soulbound_trophies() {
         ctx(a, 0, 2_000);
         arena.enter("t1".into());
     }
-    ctx("operator.testnet", 0, 5 * MIN);
+    ctx("operator.testnet", 0, 11 * MIN);
     arena.finalize(
         "t1".into(),
         hash("r"),
@@ -590,7 +595,7 @@ fn hands() -> Vec<String> {
 }
 
 fn propose(arena: &mut Arena, ranking: Vec<AccountId>) {
-    ctx("operator.testnet", MIN_VRF_FEE, 5 * MIN);
+    ctx("operator.testnet", MIN_VRF_FEE, 11 * MIN);
     let _ = arena.finalize_verified(
         "t1".into(),
         hash("result"),
@@ -618,7 +623,7 @@ fn verifier_blocks_operator_asserted_finalize() {
     let mut arena = three();
     with_verifier(&mut arena);
     running(&mut arena);
-    ctx("operator.testnet", 0, 5 * MIN);
+    ctx("operator.testnet", 0, 11 * MIN);
     arena.finalize(
         "t1".into(),
         hash("r"),
@@ -639,7 +644,7 @@ fn matching_replay_pays_and_marks_verified() {
         arena.get_tournament("t1".into()).unwrap().state,
         TournamentState::Running
     );
-    ctx("arena.testnet", 0, 5 * MIN + 1);
+    ctx("arena.testnet", 0, 11 * MIN + 1);
     assert!(arena.on_settlement_checked("t1".into(), Ok(Some(replay_out(&[B])))));
     let t = arena.get_tournament("t1".into()).unwrap();
     assert_eq!(t.state, TournamentState::Finalized);
@@ -661,7 +666,7 @@ fn mismatched_or_failed_replay_pays_nothing_and_allows_a_new_proposal() {
     with_verifier(&mut arena);
     running(&mut arena);
     propose(&mut arena, vec![acc(A)]);
-    ctx("arena.testnet", 0, 5 * MIN + 1);
+    ctx("arena.testnet", 0, 11 * MIN + 1);
     assert!(!arena.on_settlement_checked("t1".into(), Ok(Some(replay_out(&[B])))));
     let s = arena.get_settlement_status("t1".into());
     assert!(!s.verified && !s.in_flight);
@@ -673,7 +678,7 @@ fn mismatched_or_failed_replay_pays_nothing_and_allows_a_new_proposal() {
     assert_eq!(arena.get_agent(acc(A)).unwrap().balance.0, 2 * FEE);
 
     propose(&mut arena, vec![acc(B)]);
-    ctx("arena.testnet", 0, 5 * MIN + 2);
+    ctx("arena.testnet", 0, 11 * MIN + 2);
     assert!(!arena.on_settlement_checked("t1".into(), Ok(None)));
     assert_eq!(
         arena
@@ -686,11 +691,11 @@ fn mismatched_or_failed_replay_pays_nothing_and_allows_a_new_proposal() {
     propose(&mut arena, vec![acc(B)]);
     let mut bad = replay_out(&[B]);
     bad.replay_hash = hash("other log");
-    ctx("arena.testnet", 0, 5 * MIN + 3);
+    ctx("arena.testnet", 0, 11 * MIN + 3);
     assert!(!arena.on_settlement_checked("t1".into(), Ok(Some(bad))));
 
     propose(&mut arena, vec![acc(B)]);
-    ctx("arena.testnet", 0, 5 * MIN + 4);
+    ctx("arena.testnet", 0, 11 * MIN + 4);
     assert!(arena.on_settlement_checked("t1".into(), Ok(Some(replay_out(&[B])))));
 }
 
@@ -710,7 +715,7 @@ fn only_operator_proposes_verified_settlement() {
     let mut arena = three();
     with_verifier(&mut arena);
     running(&mut arena);
-    ctx(A, MIN_VRF_FEE, 5 * MIN);
+    ctx(A, MIN_VRF_FEE, 11 * MIN);
     let _ = arena.finalize_verified(
         "t1".into(),
         hash("r"),
@@ -728,7 +733,7 @@ fn verified_settlement_requires_outlayer_fee() {
     let mut arena = three();
     with_verifier(&mut arena);
     running(&mut arena);
-    ctx("operator.testnet", 0, 5 * MIN);
+    ctx("operator.testnet", 0, 11 * MIN);
     let _ = arena.finalize_verified(
         "t1".into(),
         hash("r"),
@@ -763,4 +768,101 @@ fn late_replay_after_cancel_pays_nothing() {
         TournamentState::Cancelled
     );
     assert_eq!(arena.get_agent(acc(B)).unwrap().balance.0, 3 * FEE);
+}
+
+#[test]
+fn failed_withdrawal_restores_balance_without_overwriting_new_deposits() {
+    let mut arena = three();
+    ctx(A, 0, 2_000);
+    let _ = arena.withdraw(acc(A), U128(FEE));
+    ctx("alice.testnet", FEE, 2_001);
+    arena.deposit(acc(A));
+    ctx("arena.testnet", 0, 2_002);
+    assert!(!arena.on_withdraw_resolved(acc(A), U128(FEE), Err(PromiseError::Failed)));
+    assert_eq!(arena.get_agent(acc(A)).unwrap().balance.0, 4 * FEE);
+}
+
+#[test]
+#[should_panic(expected = "CANNOT_FINALIZE")]
+fn cannot_settle_before_clock_expires() {
+    let mut arena = three();
+    running(&mut arena);
+    ctx("operator.testnet", 0, 5 * MIN);
+    arena.finalize(
+        "t1".into(),
+        hash("r"),
+        hash("p"),
+        to_hex(&seed()),
+        vec![acc(A)],
+    );
+}
+
+#[test]
+#[should_panic(expected = "EMPTY_REPLAY")]
+fn verified_settlement_rejects_empty_match() {
+    let mut arena = three();
+    with_verifier(&mut arena);
+    running(&mut arena);
+    ctx("operator.testnet", MIN_VRF_FEE, 11 * MIN);
+    let _ = arena.finalize_verified(
+        "t1".into(),
+        hash("r"),
+        to_hex(&seed()),
+        vec![acc(A)],
+        "{}".into(),
+        vec![],
+        vec![],
+    );
+}
+
+#[test]
+fn unavailable_vrf_refunds_at_playing_deadline_and_ignores_late_callback() {
+    let mut arena = three();
+    with_vrf(&mut arena);
+    running(&mut arena);
+    ctx("operator.testnet", MIN_VRF_FEE, 3_000);
+    let _ = arena.request_randomness("t1".into());
+
+    // Disabling the global source only affects newly created matches.
+    ctx("arena.testnet", 0, 4_000);
+    arena.set_randomness_source(None);
+    let policy = arena
+        .get_tournament_verification_config("t1".into())
+        .unwrap();
+    assert_eq!(policy["pinned"], true);
+    assert!(!policy["randomness_source"].is_null());
+
+    ctx("spectator.testnet", 0, 2_000 + 10 * MIN);
+    let t = arena.cancel("t1".into());
+    assert_eq!(t.state, TournamentState::Cancelled);
+    assert_eq!(t.prize_pool.0, 0);
+    for a in [A, B] {
+        assert_eq!(arena.get_agent(acc(a)).unwrap().balance.0, 3 * FEE);
+    }
+
+    ctx("arena.testnet", 0, 2_001 + 10 * MIN);
+    let alpha = format!("vrf:42:arena.testnet:{}", vrf_seed("t1"));
+    assert!(!arena.on_randomness("t1".into(), Ok(Some(vrf_response(&alpha, &vrf_key())))));
+    assert_eq!(
+        arena.get_tournament("t1".into()).unwrap().state,
+        TournamentState::Cancelled
+    );
+}
+
+#[test]
+#[should_panic(expected = "VERIFIED_SETTLEMENT_REQUIRED")]
+fn existing_tournament_keeps_verifier_after_global_change() {
+    let mut arena = three();
+    with_verifier(&mut arena);
+    running(&mut arena);
+    ctx("arena.testnet", 0, 4_000);
+    arena.set_settlement_verifier(None);
+    ctx("operator.testnet", 0, 11 * MIN);
+    arena.finalize(
+        "t1".into(),
+        hash("r"),
+        hash("p"),
+        to_hex(&seed()),
+        vec![acc(A)],
+    );
 }

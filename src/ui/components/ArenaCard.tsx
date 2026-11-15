@@ -1,13 +1,13 @@
 import { ArrowUpRight } from 'lucide-react';
 import { Tag } from './common';
-import { go, type Tournament } from '../lib/api';
+import { go, tournamentClockExpired, tournamentStatus, type Tournament } from '../lib/api';
 
 export function ArenaCard({ tournament: t }: { tournament: Tournament }) {
   return (
     <button className="arena-card" onClick={() => go(`/arenas/${t.id}`)}>
       <div className="card-top">
-        <Tag tone={t.state === 'running' ? 'hot' : t.state === 'settled' ? 'mint' : ''}>
-          {t.state === 'running' ? 'live' : t.state}
+        <Tag tone={t.state === 'running' && !tournamentClockExpired(t) ? 'hot' : t.state === 'settled' ? 'mint' : ''}>
+          {tournamentStatus(t)}
         </Tag>
         <span>Poker · #{t.id.slice(0, 6)}</span>
       </div>

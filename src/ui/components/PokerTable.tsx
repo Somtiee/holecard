@@ -1,5 +1,5 @@
 import { CardFace } from './common';
-import { go, short, type Agent, type Decision, type Thinking, type Tournament } from '../lib/api';
+import { go, short, tournamentStatus, type Agent, type Decision, type Thinking, type Tournament } from '../lib/api';
 
 export function ActionTicker({ action, thinking }: { action: Decision | null; thinking: Thinking['turn'] | null }) {
   return (
@@ -11,14 +11,14 @@ export function ActionTicker({ action, thinking }: { action: Decision | null; th
           ? `IS THINKING · ${thinking.stage.toUpperCase()} · POT ${thinking.pot} CHIPS`
           : action
             ? `${action.action.toUpperCase()} · ${action.amount} CHIPS · ${action.stage.toUpperCase()}`
-            : 'Waiting for the next onchain tournament'}
+            : 'No current action'}
       </span>
       <small>
         {thinking
-          ? `${Math.round(thinking.timeoutMs / 1000)}s CLOCK · TEE`
+          ? `${Math.round(thinking.timeoutMs / 1000)}s DECISION LIMIT`
           : action
             ? `${(action.latencyMs / 1000).toFixed(1)}s DECISION`
-            : 'NEAR / NEAR AI CLOUD'}
+            : ''}
       </small>
     </div>
   );
@@ -30,11 +30,13 @@ const CLOCKWISE = [0, 7, 1, 2, 3, 4, 5, 6, 8];
 const seatSlot = (index: number, count: number) => CLOCKWISE[Math.round((index * CLOCKWISE.length) / count) % 9];
 
 export function PokerTable({
+  activeHand,
   tournament,
   agents,
   action,
   thinking,
 }: {
+  activeHand?: number;
   tournament: Tournament;
   agents: Agent[];
   action: Decision | null;
@@ -60,7 +62,7 @@ export function PokerTable({
             TABLE <b>{tournament.id.slice(0, 4).toUpperCase()}</b>
           </span>
           <span className="live-dot">
-            {tournament.state === 'running' ? 'LIVE ACTION' : tournament.state.toUpperCase()}
+            {live && (thinking || action) ? 'LIVE ACTION' : tournamentStatus(tournament).toUpperCase()}
           </span>
         </div>
         <div className="felt">
@@ -79,7 +81,7 @@ export function PokerTable({
                 ))}
           </div>
           <div className="pot">
-            <small>CURRENT POT</small>
+            <small>{live && (thinking || action) ? 'CURRENT POT' : last ? 'LAST HAND POT' : 'POT'}</small>
             <strong>{pot}</strong>
             <span>CHIPS</span>
           </div>
@@ -93,7 +95,11 @@ export function PokerTable({
               <span className="seat-text">
                 <b>{agent?.name || short(entry.agentId)}</b>
                 <small>
-                  {(live ? action?.tableStacks?.[entry.agentId] : undefined) ??
+                  {(live
+                    ? thinking?.agentId === entry.agentId
+                      ? thinking.stack
+                      : action?.tableStacks?.[entry.agentId]
+                    : undefined) ??
                     tournament.stacks[entry.agentId] ??
                     tournament.startingStack}{' '}
                   CHIPS
@@ -105,7 +111,7 @@ export function PokerTable({
         </div>
         <div className="table-foot">
           <span>
-            HAND <b>#{String(tournament.handNumber).padStart(3, '0')}</b>
+            HAND <b>#{String(activeHand ?? tournament.handNumber).padStart(3, '0')}</b>
           </span>
           <span>
             START STACK <b>{tournament.startingStack.toLocaleString()}</b>

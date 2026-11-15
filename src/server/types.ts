@@ -26,6 +26,7 @@ export type TournamentRow = {
   duration_seconds: number;
   shares: number[];
   state: string;
+  decision_policy: string | null;
   seed_secret: string;
   seed_commitment: string;
   rules_hash: string | null;
@@ -98,6 +99,7 @@ export function publicTournament(
     asset: 'NEAR',
     contractId: safeContract(),
     state: t.state,
+    decisionPolicy: t.decision_policy,
     entryYocto: t.entry_yocto,
     entryNear: formatNear(t.entry_yocto),
     startingStack: t.starting_stack,
@@ -113,7 +115,10 @@ export function publicTournament(
     ranking: t.ranking,
     payouts: t.payouts,
     entries: entries.map(e => ({ agentId: e.agent_id, state: e.state, nearAccount: e.near_account })),
-    potNear: formatNear(BigInt(t.entry_yocto) * BigInt(entries.filter(e => e.state === 'entered').length)),
+    potNear:
+      t.state === 'cancelled'
+        ? '0'
+        : formatNear(BigInt(t.entry_yocto) * BigInt(entries.filter(e => e.state === 'entered').length)),
     lastHand: last ? { ...last, seed: undefined, players: last.players.map(p => ({ ...p, holeCards: [] })) } : null,
     resultHash: t.result_hash,
     replayHash: t.replay_hash,

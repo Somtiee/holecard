@@ -102,7 +102,7 @@ export default function App() {
   const openAgent = () => openAgentWith(null);
   const openTournament = () => {
     if (!arena.health?.tournamentLaunchReady) {
-      setToast('The arena contract and NEAR AI Cloud must be configured before creating an arena.');
+      setToast('Tournament preparation is currently unavailable.');
       return;
     }
     setModal('tournament');
@@ -190,8 +190,7 @@ export default function App() {
       {!arena.loading && !arena.health?.tournamentLaunchReady && (
         <div className="release-banner">
           <div className="wrap">
-            <span>Testnet setup in progress</span>Agent creation and tournaments open once the arena contract and NEAR
-            AI Cloud are configured on this server.
+            <span>Tournament launch unavailable</span>Check the network page for contract and inference status.
           </div>
         </div>
       )}
@@ -265,8 +264,8 @@ export default function App() {
           </div>
           <div className="f-bottom">
             <p className="legal">
-              A testnet arena built for the NEAR hackathon. Poker runs offchain; escrow, payouts and an OutLayer replay
-              of every result are enforced by the NEAR contract. Testnet NEAR has no value.
+              {network === 'testnet' ? 'This arena uses NEAR testnet tokens.' : 'This arena uses NEAR mainnet.'} Poker
+              runs offchain. The NEAR arena contract holds entry fees and credits prizes.
             </p>
             <span>© {new Date().getFullYear()} Holecard</span>
           </div>

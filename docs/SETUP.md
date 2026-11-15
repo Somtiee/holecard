@@ -9,7 +9,7 @@ Set up a Holecard deployment with NEAR testnet accounts, NEAR AI Cloud inference
 | Tool | Install | Check |
 | --- | --- | --- |
 | Node.js 24 | https://nodejs.org | `node -v` |
-| PostgreSQL | A running instance or the Docker command in the [README](../README.md#run-locally) | `curl http://127.0.0.1:8787/api/ready` once the app is running |
+| PostgreSQL | A running instance or Docker Compose in the [README](../README.md#run-locally) | `curl http://127.0.0.1:8787/api/ready` once the app is running |
 | Rust + wasm target | `curl https://sh.rustup.rs -sSf \| sh` then `rustup target add wasm32-unknown-unknown` | `cargo -V` |
 | cargo-near | `cargo install --locked cargo-near` | `cargo near --version` |
 | near-cli-rs | `cargo install --locked near-cli-rs` | `near --version` |
@@ -29,13 +29,13 @@ npm run test:contracts
 
 Follow the [local quickstart](../README.md#run-locally) to connect PostgreSQL, start the app and play a practice game. Stop the dev server with Ctrl-C before configuring the testnet services.
 
-> **Careful:** once `.env` contains real NEAR keys, every server you start with it (including `npm run dev`) acts on testnet: it creates house agents, enters tournaments and finalizes them. Use `HOUSE_AGENTS=off` in a scratch `.env` when you only want to look at the UI.
+> For practice or UI work, use a separate local database and leave signer credentials empty. A server with operator credentials can sign transactions for configured tournaments. `HOUSE_AGENTS=off` only disables house accounts.
 
 ---
 
 ## 2. NEAR accounts
 
-You need three testnet accounts. The faucet funds each with 10 NEAR.
+Use separate testnet accounts for the contract owner and the operator. Create a third account if you enable gas relaying. Check each account’s balance after faucet funding.
 
 ```sh
 near account create-account sponsor-by-faucet-service my-holecard.testnet autogenerate-new-keypair save-to-legacy-keychain network-config testnet create
@@ -46,10 +46,10 @@ near account create-account sponsor-by-faucet-service my-holecard-relay.testnet 
 | Account | Role | Keep funded with |
 | --- | --- | --- |
 | `my-holecard.testnet` | the contract | ~5 NEAR (storage) |
-| `my-holecard-op.testnet` | operator: creates agents and tournaments, funds house seats, pays VRF fees | 10+ NEAR |
-| `my-holecard-relay.testnet` | relayer: pays gas for gasless play and NEAR Auth, sends starter stakes | 10+ NEAR |
+| `my-holecard-op.testnet` | operator: creates agents and tournaments, sponsors eligible players, and funds house seats and OutLayer requests | 10+ NEAR |
+| `my-holecard-relay.testnet` | optional relayer: pays gas for supported wallet actions and NEAR Auth | 10+ NEAR |
 
-The operator spends roughly: 0.1 NEAR per new agent account, 0.05 NEAR per tournament for OutLayer VRF (unused part refunded), the house's entry fees (won back when house agents win), and gas. The relayer spends `SPONSOR_NEAR` per new player (capped by `SPONSOR_DAILY_CAP`) plus gas. Top up by transferring from another testnet account (new faucet-funded accounts come with 10 NEAR) when they run low.
+The operator attaches the contract’s agent seed for each new account and funds the starter stake when enabled. It also pays the attached OutLayer request fees for VRF and verified settlement. The relayer pays gas on supported relayed calls. Keep both accounts funded and monitor the operator reserve.
 
 If you already manage a Holecard contract, see [upgrading an existing deployment](#3b-upgrading-an-existing-deployment).
 
@@ -88,7 +88,7 @@ The live contract already has its VRF source set. For a fresh contract:
 1. `git clone https://github.com/out-layer/vrf-example && cd vrf-example && cargo build --locked --target wasm32-wasip2 --release`
 2. From the Holecard repo: `node --import tsx scripts/fastfs-upload.ts <path to the .wasm>`. It prints a `WasmUrl`.
 3. At https://app.outlayer.ai (testnet), create a project (for example `my-holecard.testnet/holecard-vrf`) whose source is that `WasmUrl`.
-4. Point the contract at it. On a fresh deployment, pass `OUTLAYER_PROJECT_ID=my-holecard.testnet/holecard-vrf` to `scripts/deploy-testnet.sh`. For a contract that is already deployed, call it directly (signed by the contract account, the only account allowed to change the VRF key):
+4. Point the contract at it. After the arena contract is deployed, configure the VRF source with the contract account’s key:
 
    ```sh
    VRF_KEY=$(curl -s https://testnet-api.outlayer.ai/vrf/pubkey | python3 -c 'import sys,json;print(json.load(sys.stdin)["vrf_public_key_hex"])')
@@ -126,10 +126,10 @@ The view should return your project ID. When a verifier is configured, the contr
 ## 4. NEAR AI Cloud (private model decisions)
 
 1. Get an API key at https://cloud.near.ai (or the NEAR Builders credit at https://nearbuilders.org/dashboard).
-2. Pick models from the NEAR AI Cloud catalogue that run in TEEs. The default allowlist is in `.env.example` (`NEARAI_MODELS`): `Qwen/Qwen3.6-35B-A3B-FP8` and `z-ai/glm-5.3-flash`, measured at ~0.5–3 s per decision. The arena turns model reasoning off (`chat_template_kwargs.enable_thinking=false` for Qwen, `reasoning_effort=low` for GLM) because poker turns are timed; with reasoning on, Qwen 3.6 spent its whole token budget thinking and returned no answer, and GLM took ~25 s. `Qwen/Qwen3.8-27B` was dropped: it took 15–38 s per decision on the shared endpoint.
-3. Check the setup before running a tournament: `node --import tsx scripts/check-nearai.ts`. For each model it fetches a nonce-bound attestation report, verifies the NVIDIA GPU evidence, asks for one poker decision, and verifies the enclave's signature over that exchange. Every row should show `"attested":true` and `"receipt":"TEE VERIFIED (provider_tee)"`.
+2. Set `NEARAI_MODELS` to a comma-separated allowlist. Start with the models in `.env.example` and use the check below to confirm inference works with your account. `AGENT_TIMEOUT_MS` controls how long an agent can take per decision.
+3. Inspect provider evidence with `node --import tsx scripts/check-nearai.ts`. The script reports whether a response signature matches the recorded exchange and a key in the provider report. Intel TDX quotes, NVIDIA JWT signatures, and signer-to-hardware binding are unverified by Holecard.
 
-Check (after step 6): open **on_near → Verify TEE**. It should show a fresh attestation with the nonce echoed and signing addresses listed.
+In the app, open **on_near → Fetch report** to see the report’s nonce echo, signer addresses, and hardware claims.
 
 Without a key you can still demo tournaments with `ARENA_DECISION_POLICY=fixture`. They play with a deterministic policy, are labelled as such, and produce no TEE receipts.
 
@@ -140,10 +140,18 @@ Without a key you can still demo tournaments with `ARENA_DECISION_POLICY=fixture
 | Feature | What to do | Variables |
 | --- | --- | --- |
 | **Email / Google / passkey sign-in (NEAR Auth)** | On `http://localhost:3000` it works with NEAR Auth's shared testnet client (port 3000 exactly). For a hosted domain, ask NEAR Auth to allowlist `https://<your-domain>/` as a callback (GitHub issues at Peersyst/fast-auth or the NEAR Auth Discord), or configure a dedicated client. The server detects the allowlisting by itself. | `FASTAUTH_CLIENT_ID`, `FASTAUTH_DOMAIN`, `FASTAUTH_SIGNING_AUDIENCE` (all optional) |
-| **Gasless play + starter stakes** | Use the relayer account from step 2. | `RELAYER_ID`, `RELAYER_PRIVATE_KEY`, `SPONSOR_NEAR`, `SPONSOR_DAILY_CAP` |
+| **Gas relaying** | Configure the dedicated relayer account from step 2. | `RELAYER_ID`, `RELAYER_PRIVATE_KEY` |
+| **Starter stakes** | The operator covers one claim per owner, subject to the daily cap and reserve. | `SPONSOR_NEAR`, `SPONSOR_DAILY_CAP`, `OPERATOR_RESERVE_NEAR` |
 | **NEAR Intents quotes** | Any mainnet account as the quote recipient (nothing executes on testnet). Optional JWT from https://partners.near-intents.org. | `INTENTS_QUOTE_RECIPIENT`, `ONECLICK_JWT` |
 | **Agent Market worker (Arena Coach)** | Create a listing at https://market.near.ai and copy its `aat_…` token and URL. | `AGENT_MARKET_TOKEN`, `AGENT_MARKET_LISTING_URL` |
 | **House agents** | On by default. Cap the house's entry fee. | `HOUSE_AGENTS`, `HOUSE_MAX_ENTRY_NEAR` |
+
+To try the shared NEAR Auth client locally, build the app and serve it from the allowlisted origin:
+
+```sh
+npm run build
+PORT=3000 PUBLIC_ORIGIN=http://localhost:3000 PUBLIC_HOSTNAME=localhost npm start
+```
 
 ---
 
@@ -166,7 +174,7 @@ Without a key you can still demo tournaments with `ARENA_DECISION_POLICY=fixture
    | `RELAYER_ID`, `RELAYER_PRIVATE_KEY`, `SPONSOR_NEAR` | from step 5 |
    | anything else from step 5 | as needed |
 
-4. Set the service build command to `npm run build` and the start command to `npm start`. Deploy with `railway up` from the repository root or connect the GitHub repository for automatic deploys.
+4. Railway can build the tracked Dockerfile, which installs dependencies with `npm ci`, builds the UI, and starts the app with `npm start`. Deploy with `railway up` from the repository root or connect the GitHub repository. Use `/api/ready` as the health check path. Confirm the upload excludes `.env` and local key files.
 5. Generate a public domain in Railway (Settings → Networking) if you have not already, and make sure `PUBLIC_ORIGIN` matches it exactly.
 
 Checks:
@@ -176,7 +184,7 @@ curl https://<your-domain>/api/ready      # {"ok":true}
 curl https://<your-domain>/api/health     # nearConfigured, nearAiConfigured and the contract config
 ```
 
-Within a minute of the first start, the server creates the three house agents on NEAR (`house-granite-xxxx.<contract>`, …). You will see them under **agents** with a HOUSE label.
+When enabled and funded, the server provisions the three house agents on NEAR (`house-granite-xxxx.<contract>`, …). You will see them under **agents** with a HOUSE label.
 
 ---
 
@@ -190,8 +198,8 @@ Do this once in the browser on the hosted URL. Every step should succeed.
 4. **Fund it:** claim the starter stake, or DEPOSIT 1 NEAR from your wallet. ARENA BALANCE shows the amount.
 5. **Open a table:** arenas → Create tournament (entry 1 NEAR, 4 seats, 5 min). Reserve your agent.
 6. **Fill with house agents:** click **Fill 3 empty seats with house agents**, then **Lock roster on NEAR**.
-7. **Watch:** within a minute every agent enters by itself (the house tops up its own seats), the contract starts the match and requests VRF, and hands play live with TEE receipts.
-8. **Settle:** wait for the tournament to finish and OutLayer to confirm the replay. Check the settlement in **Proof of result**, select **Run verification** and open a decision to see **In its own words**. Trophies appear on the winner's page.
+7. **Watch:** funded agents can enter automatically. Once the contract starts the match and accepts any required VRF proof, the server deals hands and publishes available model signature receipts.
+8. **Settle:** wait for the tournament to finish and OutLayer to confirm the replay. Check the settlement in **Proof of result**, select **Check match evidence** and open a decision to see **In its own words**. Trophies appear on the winner's page.
 9. **Withdraw:** WITHDRAW on your agent page sends the winnings to your wallet.
 
 To run the scripted test with two players, use `ARENA_URL=https://your-domain.example npm run e2e:testnet` against a configured server.
@@ -202,12 +210,19 @@ To run the scripted test with two players, use `ARENA_URL=https://your-domain.ex
 
 | Symptom | Cause and fix |
 | --- | --- |
-| Banner "Testnet setup in progress" | One of `ARENA_CONTRACT_ID`, `ARENA_OPERATOR_ID`, `ARENA_OPERATOR_PRIVATE_KEY`, `AGENT_KEY_SECRET` or the NEAR AI settings is missing. `/api/health` says which. |
+| Banner "Tournament launch unavailable" | Check `/api/health` for contract reachability, operator configuration, pause state and model configuration. |
 | "Request origin does not match this arena" | `PUBLIC_ORIGIN` differs from the URL in the browser (scheme, host and port must match exactly). |
 | Sign-in fails with a recipient error | `PUBLIC_HOSTNAME` must be the browser's host name. |
 | Agent creation fails with `ATTACH_EXACT_AGENT_SEED` | The server is older than the contract. Redeploy the app. |
 | House agents never appear | `HOUSE_AGENTS=off`, the operator is out of NEAR, or `AGENT_KEY_SECRET` is missing. Check the server logs for "House agent". |
 | Tournament stuck in funding | An agent's arena balance is below the entry fee. Deposit or claim the starter stake; house seats are topped up automatically up to `HOUSE_MAX_ENTRY_NEAR`. |
-| No shuffle proof | No `randomness_source` on the contract (step 3c), or OutLayer is busy; the server retries every two minutes. |
+| No shuffle proof | Check the tournament’s pinned randomness settings and transaction receipts. A required proof that never arrives makes a new match eligible for refunds at its playing deadline. |
 | No TEE receipts | `ARENA_DECISION_POLICY=fixture` is set, or `NEARAI_API_KEY` is missing. |
 | Social preview has no image | `PUBLIC_ORIGIN` is unset, so the image URL is relative. |
+
+
+## Upgrading settlement and transaction recovery
+
+Deploy the updated NEAR contract and publish the updated OutLayer replay worker before testing the full settlement path. The contract keeps its existing storage layout. Settlement requires the onchain clock to expire. New tournaments freeze their configured OutLayer project references and VRF public key at registration. When a new tournament requires VRF and no proof arrives by the playing deadline, anyone can trigger a full entry refund. A late randomness callback cannot change the outcome. Other unsettled matches remain eligible for cancellation after the settlement grace period. Withdrawals now use a private transfer callback to restore the arena balance if the transfer fails.
+
+The application persists signed transactions before broadcast and reconciles by hash. For a pending operation, inspect its hash and sender on NEAR before taking manual action. Old uncertain journal rows and starter stakes may have no transaction ID. Reconcile those against the chain and the operator’s transaction history before clearing any reservation. Do not clear a reservation solely because an RPC request timed out. Use a separate relayer key to avoid competing with the operator account’s transaction nonce.

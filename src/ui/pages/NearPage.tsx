@@ -77,7 +77,8 @@ export function NearPage({
           </div>
           <p>
             A Rust contract that creates agent accounts, escrows entry fees, freezes rosters and prize shares, checks
-            the seed reveal and pays results to the exact yoctoNEAR, once OutLayer has confirmed them.
+            the seed reveal and credits prizes to arena balances. The replay check applies when an OutLayer verifier is
+            configured.
           </p>
           {config?.contractId ? (
             <>
@@ -96,7 +97,7 @@ export function NearPage({
                 {[
                   ['AGENTS', c?.agent_count ?? '—'],
                   ['TOURNAMENTS', c?.tournament_count ?? '—'],
-                  ['PAUSED', c?.paused ? 'YES' : 'NO'],
+                  ['PAUSED', typeof c?.paused === 'boolean' ? (c.paused ? 'YES' : 'NO') : '—'],
                 ].map(([l, v]) => (
                   <div key={String(l)}>
                     <small>{l}</small>
@@ -117,18 +118,18 @@ export function NearPage({
           <p>
             Each agent is a NEAR sub-account. The owner's wallet key has full access. The arena's key may call only{' '}
             <code>enter</code> and <code>withdraw</code> on the arena, with a gas cap, and NEAR rejects deposits from
-            function-call keys. A compromised server can enter rostered tournaments. It cannot move an agent's NEAR
-            anywhere but the owner's wallet.
+            function-call keys. The contract sends withdrawals to the registered owner, including when the restricted
+            key calls the method.
           </p>
         </section>
         <section className="content-panel">
           <div className="panel-heading">
-            <span>NEAR AI CLOUD · PRIVATE INFERENCE</span>
+            <span>NEAR AI CLOUD · ATTESTATION EVIDENCE</span>
             <Cpu size={18} />
           </div>
           <p>
-            Agents decide inside TEE-hosted models. Request a fresh, nonce-bound attestation report and see what was
-            checked.
+            Fetch the model provider’s attestation report and inspect the returned claims. Holecard does not validate
+            the hardware quotes.
           </p>
           <div className="form-row">
             <select value={model} onChange={e => setModel(e.target.value)}>
@@ -136,29 +137,40 @@ export function NearPage({
                 <option key={m}>{m}</option>
               ))}
             </select>
-            <button disabled={busy || !config?.nearAiReady} onClick={() => void attest()}>
-              VERIFY TEE <ArrowRight size={15} />
+            <button
+              disabled={busy || !model || !config?.nearAiReady || config?.decisionPolicy === 'fixture'}
+              onClick={() => void attest()}
+            >
+              FETCH REPORT <ArrowRight size={15} />
             </button>
           </div>
           {!config?.nearAiReady && <p className="fund-hint">NEAR AI Cloud key not configured on this server.</p>}
-          {att && (
+          {att?.model === model && (
             <div className="attest">
               <span className={`tag ${att.verified ? 'mint' : ''}`}>{att.verified ? 'VERIFIED' : 'NOT VERIFIED'}</span>
               <ul>
                 <li>
-                  {att.nonceEchoed ? '✓' : '✗'} report bound to our nonce {shortId(att.nonce, 6)}
+                  {att.nonceEchoed ? '✓' : '✗'} report echoes nonce {shortId(att.nonce, 6)}
                 </li>
                 <li>
-                  {att.gpu?.overallResult ? '✓' : '✗'} NVIDIA NRAS GPU attestation{' '}
+                  {att.gpu ? (att.gpu.overallResult ? 'Pass reported' : 'Failure reported') : 'Unavailable'} · NVIDIA
+                  GPU claims{' '}
                   {att.gpu?.gpus
                     .map(g => g.hwmodel)
                     .filter(Boolean)
                     .join(', ')}
                 </li>
-                <li>{att.gpu?.nonceMatch ? '✓' : '✗'} GPU evidence nonce matches</li>
-                <li>{att.intelQuotePresent ? '✓' : '–'} Intel TDX quote present</li>
                 <li>
-                  {att.modelSigners.length} model TEE signing key(s):{' '}
+                  {att.gpu?.nonceMatch === null || !att.gpu
+                    ? 'Unavailable'
+                    : att.gpu.nonceMatch
+                      ? 'Matches'
+                      : 'Differs'}{' '}
+                  · reported GPU nonce
+                </li>
+                <li>{att.intelQuotePresent ? 'Present' : 'Unavailable'} · Intel TDX quote</li>
+                <li>
+                  {att.modelSigners.length} reported model signing key(s):{' '}
                   {att.modelSigners.map(s => shortId(s, 5)).join(', ')}
                 </li>
               </ul>
@@ -174,10 +186,10 @@ export function NearPage({
             <Dices size={18} />
           </div>
           <p>
-            When a match starts, the arena contract calls OutLayer's <code>request_execution</code>. The transaction
-            pauses (yield) while a TEE worker produces a VRF value, then resumes into <code>on_randomness</code>, which
-            runs <code>env::ed25519_verify</code> against OutLayer's VRF key. Decks mix that value with the operator's
-            seed, committed before anyone entered.
+            When configured, the arena contract calls OutLayer's <code>request_execution</code>. The transaction pauses
+            (yield) while a TEE worker produces a VRF value, then resumes into <code>on_randomness</code>, which runs{' '}
+            <code>env::ed25519_verify</code> against OutLayer's VRF key. Decks mix that value with the operator's seed,
+            committed before anyone entered.
           </p>
         </section>
         <section className="content-panel">
@@ -186,15 +198,15 @@ export function NearPage({
             <ScanSearch size={18} />
           </div>
           <p>
-            The operator can propose a result but cannot pay it. <code>finalize_verified</code> sends OutLayer what the
-            contract already trusts (the seed it checked against the commitment, the verified VRF output and the roster
-            hashes) plus the recorded actions. A TEE re-deals and replays every hand with the same engine, rejects any
-            illegal action, and returns the ranking. <code>on_settlement_checked</code> pays only if it matches.
+            With a verifier configured, <code>finalize_verified</code> sends OutLayer what the contract already trusts
+            (the seed it checked against the commitment, the verified VRF output when available and the roster hashes)
+            plus the recorded actions. A TEE re-deals and replays every hand with the same engine, rejects any illegal
+            action, and returns the ranking. <code>on_settlement_checked</code> pays only if it matches.
           </p>
           <p>
             {config?.settlementVerifier
               ? `Active · replay program ${config.settlementVerifier}`
-              : 'Not enabled on this contract; results are operator-asserted.'}
+              : 'No active replay verifier confirmed.'}
           </p>
         </section>
         <section className="content-panel">
@@ -217,8 +229,8 @@ export function NearPage({
             {config?.fastAuth?.ready
               ? 'Players can sign in with Google, email or a passkey through NEAR Auth (MPC-derived keys, no seed phrase). '
               : 'NEAR Auth sign-in with Google, email or a passkey (MPC-derived keys, no seed phrase) is built in; this server offers it as soon as NEAR Auth allowlists its domain, and signs players in with a NEAR wallet until then. '}
-            The arena relayer submits NEP-366 delegate actions so players never pay gas, and on testnet a one-time
-            starter stake means they never need to buy NEAR to play.
+            The relayer can cover gas for supported NEP-366 wallet actions. The testnet starter stake is subject to
+            availability and claim limits.
           </p>
         </section>
         <section className="content-panel">
@@ -244,7 +256,7 @@ export function NearPage({
           </div>
           <p>
             Arena Coach is an analyst agent built for market.near.ai. Buyers hire it per job; it reads public arena
-            records, writes its analysis on a NEAR AI Cloud TEE model and delivers Markdown through the marketplace's
+            records, writes its analysis through NEAR AI Cloud and delivers Markdown through the marketplace's
             held-payment flow.
           </p>
           <p>

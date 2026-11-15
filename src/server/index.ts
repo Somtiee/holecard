@@ -37,6 +37,7 @@ import {
   teeReceipts,
   decisionNotes,
   tickArena,
+  verifyPendingReceipts,
   verifyMatch,
   settlementVerifier,
 } from './arena/service';
@@ -46,11 +47,10 @@ import { HOUSE_PERSONAS, fillWithHouse, houseEnabled, houseMaxEntryYocto } from 
 import {
   NEAR_EXPLORER,
   NEAR_NETWORK,
-  NEAR_RPC_URL,
+  PUBLIC_NEAR_RPC_URL,
   contractId,
   nearConfigured,
   formatNear,
-  operatorCall,
   txUrl,
   view,
 } from './near/chain';
@@ -109,8 +109,9 @@ app.use((req, res, next) => {
     res.status(403).json({ error: 'Request origin does not match this arena.' });
     return;
   }
-  if (limited.has(req.path)) {
-    const key = `${req.path}:${req.ip || req.socket.remoteAddress || 'unknown'}`,
+  const rateRoute = /^\/api\/tournaments\/[^/]+\/verification$/.test(req.path) ? 'verification' : req.path;
+  if (limited.has(rateRoute) || rateRoute === 'verification') {
+    const key = `${rateRoute}:${req.ip || req.socket.remoteAddress || 'unknown'}`,
       now = Date.now(),
       prior = requestCounts.get(key);
     const item = prior && prior.until > now ? prior : { count: 0, until: now + 60000 };
@@ -150,7 +151,9 @@ let contractConfigLoading: Promise<unknown> | null = null;
 const contractConfig = () => {
   const stale = !contractConfigCache || Date.now() - contractConfigCache.at > 15_000;
   if (stale && !contractConfigLoading) {
-    const next = view<Record<string, unknown>>('get_config').catch(error => ({ error: (error as Error).message }));
+    const next = view<Record<string, unknown>>('get_config').catch(() => ({
+      error: 'Arena contract status unavailable',
+    }));
     contractConfigLoading = next.then(() => {
       contractConfigCache = { at: Date.now(), value: next };
       contractConfigLoading = null;
@@ -171,18 +174,27 @@ app.get(
       nearConfigured: nearConfigured(),
       nearAiConfigured: nearAiConfigured(),
       decisionPolicy: decisionMode(),
-      tournamentLaunchReady: nearConfigured() && (decisionMode() === 'fixture' || nearAiConfigured()),
+      tournamentLaunchReady: Boolean(
+        config &&
+        !('error' in config) &&
+        config.operator === process.env.ARENA_OPERATOR_ID &&
+        config.paused === false &&
+        (decisionMode() === 'fixture' || nearAiConfigured()),
+      ),
       agentMarket: agentMarketStatus(),
-      operatorTrust: (await settlementVerifier())
-        ? 'The operator proposes results; the NEAR contract pays only after an OutLayer TEE replays the match and reaches the same ranking. It also escrows entry fees, checks the seed reveal and pays the frozen shares.'
-        : 'Poker results are operator asserted; the NEAR contract escrows entry fees, checks the seed reveal and pays the frozen shares.',
+      operatorTrust:
+        !config || 'error' in config
+          ? 'Contract settlement configuration is unavailable.'
+          : (await settlementVerifier())
+            ? 'The operator proposes results; the NEAR contract pays only after an OutLayer TEE replays the match and reaches the same ranking. It also escrows entry fees, checks the seed reveal and pays the frozen shares.'
+            : 'No replay verifier is confirmed. Consult the tournament settlement record.',
     });
   }),
 );
 app.get('/api/config', async (_req, res) =>
   res.json({
     network: NEAR_NETWORK,
-    rpcUrl: NEAR_RPC_URL,
+    rpcUrl: PUBLIC_NEAR_RPC_URL,
     explorer: NEAR_EXPLORER,
     contractId: safeContract(),
     signInRecipient: signInRecipient(),
@@ -328,10 +340,8 @@ app.post(
   handle(async (req, res) => {
     const a = await getAgent(param(req.params.id));
     if (!a || a.owner !== res.locals.owner || a.state !== 'active') throw new Error('Agent not found for this owner');
-    const r = await sponsorAgent(res.locals.owner, a.near_account, (agent, yocto) =>
-      operatorCall('deposit', { agent }, yocto),
-    );
-    res.json({ ...r, explorer: txUrl(r.txHash) });
+    const r = await sponsorAgent(res.locals.owner, a.near_account);
+    res.status(r.state === 'pending' ? 202 : 200).json({ ...r, explorer: r.txHash ? txUrl(r.txHash) : null });
   }),
 );
 app.post(
@@ -531,13 +541,23 @@ if (process.env.NODE_ENV !== 'test') {
   void refreshFastAuthCallback().then(() =>
     console.log(`NEAR Auth callback ${fastAuthCallbackAllowed() ? 'allowed' : 'not allowlisted yet'} for this origin`),
   );
+  let receiptBusy = false;
+  setInterval(() => {
+    if (receiptBusy || !nearAiConfigured()) return;
+    receiptBusy = true;
+    void verifyPendingReceipts()
+      .catch(error => console.error('Inference receipt check failed', (error as Error).message))
+      .finally(() => {
+        receiptBusy = false;
+      });
+  }, 5000);
   let busy = false;
   setInterval(() => {
     if (busy) return;
     busy = true;
     void tickArena(
-      (action, tournamentId) => broadcast('hand.action', { tournamentId, action }),
-      (turn, tournamentId) => broadcast('turn.thinking', { tournamentId, turn }),
+      (action, tournamentId, handNumber) => broadcast('hand.action', { tournamentId, handNumber, action }),
+      (turn, tournamentId, handNumber) => broadcast('turn.thinking', { tournamentId, handNumber, turn }),
     )
       .catch(error => console.error('Arena tick failed', (error as Error).message))
       .finally(() => {

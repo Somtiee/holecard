@@ -1,35 +1,35 @@
-node_modules
-.data/
-dist
-.env
-.env.*.local
+# Dependencies and build output
+node_modules/
+dist/
+target/
 *.tsbuildinfo
-.DS_Store
-.railway/
-Dockerfile
-docker-compose.yml
-.dockerignore
-.railwayignore
-contracts/near/target
-.claude/
-workers/*/target
 
-# demo video workspace (local only)
-video/
-
-# local environment and secrets (keep the documented template visible)
+# Local configuration, credentials and databases
 .env*
-!.env.example
+!/.env.example
+.envrc
 *.pem
 *.key
+*.p12
+*.pfx
+.near-credentials/
+.aws/
+.data/
+*.sqlite
+*.sqlite3
+*.dump
 
-# editors and OS
-.vscode/
-.idea/
-Thumbs.db
+# Local deployment and authoring workspaces
+/.railway/
+/.railwayignore
+/.claude/
+/video/
 
-# logs and coverage
+# Logs, coverage and editor files
 *.log
 coverage/
 .nyc_output/
-
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

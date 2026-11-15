@@ -36,6 +36,7 @@ export type Decision = {
 
 export type Thinking = {
   tournamentId: string;
+  handNumber: number;
   turn: {
     agentId: string;
     agent: string;
@@ -59,6 +60,7 @@ export type Hand = {
 };
 
 export type Tournament = {
+  decisionPolicy: string | null;
   id: string;
   creator: string;
   name: string;
@@ -168,3 +170,9 @@ export const timeLeft = (value: string | null) => {
     .toString()
     .padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
 };
+
+export const tournamentClockExpired = (t: Tournament) =>
+  t.state === 'running' && Boolean(t.startedAt && Date.now() >= Date.parse(t.startedAt) + t.durationSeconds * 1000);
+
+export const tournamentStatus = (t: Tournament) =>
+  tournamentClockExpired(t) ? (t.handNumber ? 'Time expired' : 'Expired · no hands recorded') : t.state;

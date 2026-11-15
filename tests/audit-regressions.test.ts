@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { playHand, type DecisionContext, type DecisionProvider } from '../src/engine/hand';
+import { replayMatches } from '../src/server/arena/verification';
 import { createDeck, legalActions, seededRandom, validateAction } from '../src/engine/poker';
 
 const seats = [
@@ -71,6 +72,16 @@ describe('audit regression: engine trust boundaries', () => {
     );
     expect(aTurns).toHaveLength(2);
     expect(aTurns[1].legalActions.map(a => a.action)).toEqual(['fold', 'call']);
+  });
+  it('checks payout amounts independently of JSON object key order', async () => {
+    const hand = await run(async ctx => ({
+      action: ctx.legalActions.some(a => a.action === 'check') ? 'check' : 'call',
+    }));
+    const reversed = Object.fromEntries(Object.entries(hand.payouts).reverse());
+    expect(Object.keys(reversed)).not.toEqual(Object.keys(hand.payouts));
+    expect(await replayMatches({ ...hand, payouts: reversed })).toBe(true);
+    const [agent, payout] = Object.entries(reversed)[0];
+    expect(await replayMatches({ ...hand, payouts: { ...reversed, [agent]: payout + 1 } })).toBe(false);
   });
   it('uses the entire 256-bit seed, while preserving legacy numeric replay seeds', () => {
     const seed = 'a'.repeat(64);

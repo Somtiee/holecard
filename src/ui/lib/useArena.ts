@@ -10,9 +10,15 @@ export function useArena() {
     [health, setHealth] = useState<Health | null>(null),
     [owner, setOwner] = useState<string | null>(null),
     [loading, setLoading] = useState(true),
-    [action, setAction] = useState<{ tournamentId: string; action: Decision } | null>(null),
-    [thinking, setThinking] = useState<Thinking | null>(null);
+    [liveEvents, setLiveEvents] = useState<
+      Record<string, { handNumber: number; expiresAt: number; action?: Decision; turn?: Thinking['turn'] }>
+    >({});
   // Fast-changing lists poll every 10 s (and on live events); config, health and session change rarely.
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const tick = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(tick);
+  }, []);
   const refreshLists = useCallback(async () => {
     const [a, t, l] = await Promise.all([
       api<Agent[]>('/api/agents'),
@@ -86,12 +92,17 @@ export function useArena() {
       socket.onmessage = event => {
         try {
           const message = JSON.parse(event.data);
-          if (message.event === 'hand.action') {
-            setAction(message.data);
-            setThinking(null);
-          } else if (message.event === 'turn.thinking') {
-            setThinking(message.data);
-            setAction(null);
+          if (message.event === 'hand.action' || message.event === 'turn.thinking') {
+            const { tournamentId, handNumber, action, turn } = message.data;
+            const receivedAt = Date.now();
+            setNow(receivedAt);
+            setLiveEvents(old => {
+              const active = Object.fromEntries(Object.entries(old).filter(([, e]) => e.expiresAt > receivedAt));
+              return {
+                ...active,
+                [tournamentId]: { handNumber, action, turn, expiresAt: receivedAt + (turn?.timeoutMs ?? 5000) },
+              };
+            });
           }
           if (message.event !== 'connected' && message.event !== 'turn.thinking') soon();
         } catch {
@@ -100,6 +111,7 @@ export function useArena() {
       };
       socket.onclose = () => {
         if (closed) return;
+        setLiveEvents({});
         reconnect = setTimeout(open, Math.min(30_000, 1000 * 2 ** retry++));
       };
     };
@@ -111,5 +123,10 @@ export function useArena() {
       socket?.close();
     };
   }, [refreshLists]);
-  return { agents, tournaments, leaders, config, health, owner, setOwner, loading, refresh, action, thinking };
+  const liveEvent = (t: Tournament | undefined) => {
+    if (t?.state !== 'running') return undefined;
+    const event = liveEvents[t.id];
+    return event && event.expiresAt > now && event.handNumber > t.handNumber ? event : undefined;
+  };
+  return { agents, tournaments, leaders, config, health, owner, setOwner, loading, refresh, liveEvent };
 }

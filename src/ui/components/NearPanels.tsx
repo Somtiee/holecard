@@ -34,13 +34,13 @@ export type AccessKey = {
 };
 
 export type AgentWallet = {
-  trophies: { tokenId: string; balance: string }[];
+  trophies: { tokenId: string; balance: string }[] | null;
   nearAccount: string;
   explorer: string;
   contractId: string;
-  arenaBalanceNear: string;
+  arenaBalanceNear: string | null;
   accountBalanceNear: string | null;
-  accessKeys: AccessKey[];
+  accessKeys: AccessKey[] | null;
   createTx: string | null;
   onchainRecord: { owner: string; tournaments: number; wins: number } | null;
 };
@@ -74,7 +74,7 @@ export type Receipt = {
   chat_id: string;
   signature_kind: string | null;
   signer: string | null;
-  verified: boolean;
+  signature_checked: boolean;
   detail: string | null;
 };
 
@@ -119,14 +119,21 @@ export function AgentNearPanel({
   notify: (m: string) => void;
 }) {
   const [wallet, setWallet] = useState<AgentWallet | null>(null),
+    [walletError, setWalletError] = useState(false),
     [amount, setAmount] = useState('1'),
     [busy, setBusy] = useState(false),
     [source, setSource] = useState('usdc-base'),
     [quote, setQuote] = useState<Quote | null>(null);
   const load = () =>
     void get<AgentWallet>(`/api/agents/${agentId}/wallet`)
-      .then(setWallet)
-      .catch(() => {});
+      .then(value => {
+        setWallet(value);
+        setWalletError(false);
+      })
+      .catch(() => {
+        setWallet(null);
+        setWalletError(true);
+      });
   useEffect(() => {
     load();
     const t = setInterval(() => {
@@ -145,7 +152,7 @@ export function AgentNearPanel({
         amount,
       );
       notify(
-        `${kind === 'deposit' ? 'Deposit confirmed onchain' : 'Withdrawal sent to your wallet'}${via === 'relayed' ? ' · gas paid by the arena relayer' : ''}.`,
+        `${kind === 'deposit' ? 'Deposit' : 'Withdrawal'} submitted ${via === 'relayed' ? 'through the arena relayer' : 'through your wallet'}. Check your onchain balance for the result.`,
       );
       load();
     } catch (e) {
@@ -157,8 +164,12 @@ export function AgentNearPanel({
   const sponsor = async () => {
     setBusy(true);
     try {
-      await post(`/api/agents/${agentId}/sponsor`, {});
-      notify(`Starter stake of ${config?.sponsorNear} testnet NEAR deposited by the arena.`);
+      const result = await post<{ state: string; amountYocto: string }>(`/api/agents/${agentId}/sponsor`, {});
+      notify(
+        result.state === 'confirmed'
+          ? `Starter stake of ${yoctoToNear(result.amountYocto)} testnet NEAR confirmed.`
+          : 'Starter stake confirmation pending. Select Claim again to check the same transaction.',
+      );
       load();
     } catch (e) {
       notify((e as Error).message);
@@ -183,7 +194,7 @@ export function AgentNearPanel({
           <span>NEAR AGENT ACCOUNT</span>
           <Wallet size={18} />
         </div>
-        <p>Loading account…</p>
+        <p>{walletError ? 'Account data unavailable.' : 'Loading account…'}</p>
       </section>
     );
   return (
@@ -192,13 +203,10 @@ export function AgentNearPanel({
         <span>NEAR AGENT ACCOUNT</span>
         <Wallet size={18} />
       </div>
-      <p>
-        This agent is its own NEAR account, a sub-account of the arena contract. Its owner holds the full-access key;
-        the arena server holds only a restricted key.
-      </p>
+      <p>Agent wallet data below comes from the NEAR account and the arena contract.</p>
       <div className="wallet-balance">
         <small>ARENA BALANCE (ESCROWED IN CONTRACT)</small>
-        <strong>{wallet.arenaBalanceNear}</strong>
+        <strong>{wallet.arenaBalanceNear ?? 'Unavailable'}</strong>
         <span>NEAR</span>
       </div>
       <div className="address-line">
@@ -216,7 +224,8 @@ export function AgentNearPanel({
         <small>
           <KeyRound size={13} /> ACCESS KEYS (READ FROM CHAIN)
         </small>
-        {wallet.accessKeys.map(k => (
+        {!wallet.accessKeys && <p>Access keys unavailable.</p>}
+        {wallet.accessKeys?.map(k => (
           <div className="key-row" key={k.publicKey}>
             <b>{k.role.toUpperCase()}</b>
             <code>{shortId(k.publicKey, 12)}</code>
@@ -260,7 +269,9 @@ export function AgentNearPanel({
         <small>
           <Award size={13} /> TROPHIES · NEP-245 (SOULBOUND)
         </small>
-        {wallet.trophies.length ? (
+        {wallet.trophies === null ? (
+          <p>Trophy data unavailable.</p>
+        ) : wallet.trophies.length ? (
           wallet.trophies.map(t => (
             <div className="key-row" key={t.tokenId}>
               <b>{t.tokenId.startsWith('trophy:') ? 'CHAMPION TROPHY' : t.tokenId.toUpperCase()}</b>
@@ -308,9 +319,9 @@ export function AgentNearPanel({
   );
 }
 
-/** Per-tournament privacy evidence: one signed TEE receipt per model decision. */
+/** Recorded response evidence for this match. */
 
-export function TeeReceiptsPanel({ tournamentId, policy }: { tournamentId: string; policy: string | undefined }) {
+export function TeeReceiptsPanel({ tournamentId }: { tournamentId: string }) {
   const [rows, setRows] = useState<Receipt[]>([]);
   useEffect(() => {
     const load = () =>
@@ -323,17 +334,16 @@ export function TeeReceiptsPanel({ tournamentId, policy }: { tournamentId: strin
     }, 6000);
     return () => clearInterval(t);
   }, [tournamentId]);
-  const verified = rows.filter(r => r.verified).length;
+  const checked = rows.filter(r => r.signature_checked).length;
   return (
     <section className="content-panel tx-panel">
       <div className="panel-heading">
-        <span>PRIVATE INFERENCE RECEIPTS</span>
-        <span>{policy === 'fixture' ? 'FIXTURE POLICY (NO MODEL)' : `${verified}/${rows.length} TEE-SIGNED`}</span>
+        <span>INFERENCE RECEIPTS</span>
+        <span>{`${checked}/${rows.length} RECENT SIGNATURES MATCHED`}</span>
       </div>
       <p>
-        Each decision prompt holds that agent's private hole cards. It is sent only to a NEAR AI Cloud model running in
-        a TEE. The arena keeps the sha256 of the exact request and response, then checks the enclave's signature over
-        them against the attested signing key. The prompt itself is not stored.
+        For NEAR AI Cloud responses with receipts, the arena compares the request and response hashes and recovers the
+        signer. A match identifies a key reported by the provider. Hardware attestation remains unverified.
       </p>
       {rows.slice(0, 12).map((r, i) => (
         <div className="tx-row" key={`${r.chat_id}-${i}`}>
@@ -348,21 +358,21 @@ export function TeeReceiptsPanel({ tournamentId, policy }: { tournamentId: strin
               {r.model} · {shortId(r.chat_id, 10)}
             </small>
           </div>
-          <span className={`tag ${r.verified ? 'mint' : ''}`}>
-            {r.verified ? 'TEE VERIFIED' : r.detail ? 'UNVERIFIED' : 'CHECKING'}
+          <span className={`tag ${r.signature_checked ? 'mint' : ''}`}>
+            {r.signature_checked
+              ? r.signature_kind === 'gateway'
+                ? 'GATEWAY SIGNATURE MATCHED'
+                : 'MODEL SIGNATURE MATCHED'
+              : r.detail
+                ? 'UNVERIFIED'
+                : 'PENDING CHECK'}
           </span>
           <small title={r.detail || ''}>
             {r.signer ? `${r.signature_kind} ${shortId(r.signer, 6)}` : r.detail || ''}
           </small>
         </div>
       ))}
-      {!rows.length && (
-        <p>
-          {policy === 'fixture'
-            ? 'This arena runs the deterministic fixture policy, so no model is called.'
-            : 'Receipts appear as soon as agents make decisions.'}
-        </p>
-      )}
+      {!rows.length && <p>{'No inference receipts are recorded for this match.'}</p>}
     </section>
   );
 }
@@ -373,17 +383,18 @@ export function RandomnessPanel({ tournamentId }: { tournamentId: string }) {
   const [r, setR] = useState<{ status: string; output_hex: string | null; alpha: string | null } | null | undefined>(
     undefined,
   );
-  const [configured, setConfigured] = useState<boolean | null>(null);
-  useEffect(() => {
-    void get<{ contract: { randomness_source?: unknown } | null }>('/api/health')
-      .then(h => setConfigured(Boolean(h.contract?.randomness_source)))
-      .catch(() => {});
-  }, []);
+  const [unavailable, setUnavailable] = useState(false);
   useEffect(() => {
     const load = () =>
       void get<{ randomness: typeof r } | null>(`/api/tournaments/${tournamentId}/onchain`)
-        .then(t => setR(t?.randomness ?? null))
-        .catch(() => {});
+        .then(t => {
+          setR(t?.randomness ?? null);
+          setUnavailable(false);
+        })
+        .catch(() => {
+          setR(undefined);
+          setUnavailable(true);
+        });
     load();
     const i = setInterval(() => {
       if (!document.hidden) load();
@@ -410,20 +421,21 @@ export function RandomnessPanel({ tournamentId }: { tournamentId: string }) {
         </>
       ) : r?.status === 'requested' ? (
         <p>Waiting for OutLayer to return verifiable randomness. Dealing starts once the contract verifies it.</p>
-      ) : configured === false ? (
-        <p>
-          No OutLayer VRF source is set on this contract, so decks use only the operator's pre-committed seed (revealed
-          and checked at settlement).
-        </p>
       ) : (
-        <p>Requested from OutLayer when the match starts. Deck entropy cannot be re-rolled once verified.</p>
+        <p>
+          {unavailable
+            ? 'Onchain randomness data unavailable.'
+            : r === undefined
+              ? 'Checking onchain randomness…'
+              : 'No VRF proof recorded for this tournament.'}
+        </p>
       )}
     </section>
   );
 }
 
 type Verification = {
-  handChecks: { handNumber: number; valid: boolean; seedMatches: boolean }[];
+  handChecks: { handNumber: number; valid: boolean; seedMatches: boolean | null }[];
   engineReplayVerified: boolean;
   seedCommitmentMatches: boolean;
   onchain: {
@@ -435,7 +447,8 @@ type Verification = {
     replayHashMatches: boolean | null;
     payouts: { agent: string; amount: string }[];
   } | null;
-  teeReceipts: { total: number; verified: number };
+  teeReceipts: { total: number; signatureChecked: number };
+  trust: string;
   decisionPolicy: string;
   settlement: {
     verifierProject: string | null;
@@ -472,33 +485,32 @@ export function SettlementPanel({ tournamentId, state }: { tournamentId: string;
   const s = v?.settlement;
   const rows: [boolean | null, string][] = v
     ? [
-        [v.onchain?.rosterHashMatches ?? null, 'Roster and strategies locked on NEAR before play'],
-        [v.seedCommitmentMatches, 'Operator seed matches its pre-match commitment'],
+        [v.onchain?.rosterHashMatches ?? null, 'Recorded roster matches the onchain commitment'],
+        [v.onchain?.revealedSeedMatches ?? null, 'Recorded seed matches the onchain reveal'],
         [
           v.onchain?.randomness ? v.onchain.randomness.status === 'verified' : null,
           'Shuffle entropy from OutLayer VRF, proof checked onchain',
         ],
         [
-          hands ? v.engineReplayVerified : null,
+          hands && v.onchain ? v.engineReplayVerified : null,
           `${hands} hand${hands === 1 ? '' : 's'} replay to the same result here`,
         ],
+        [v.onchain?.replayHashMatches ?? null, 'Recorded replay matches the onchain commitment'],
         [
-          v.teeReceipts.total ? v.teeReceipts.verified === v.teeReceipts.total : null,
-          v.decisionPolicy === 'fixture'
-            ? 'Decisions from the labelled fixture policy (no model)'
-            : `${v.teeReceipts.verified}/${v.teeReceipts.total} model decisions carry a NEAR AI TEE signature`,
+          null,
+          `${v.teeReceipts.signatureChecked}/${v.teeReceipts.total} inference receipts matched a reported key. Hardware attestation unverified.`,
         ],
         [
           s?.verifiedByOutLayer ? true : s?.lastRejection ? false : null,
           s?.verifiedByOutLayer
-            ? 'Payout released only after an OutLayer TEE replayed the match'
+            ? 'Contract accepted the OutLayer replay verdict before crediting prizes'
             : s?.inFlight
               ? 'OutLayer is replaying the match before payout'
               : s?.lastRejection
                 ? `OutLayer replay rejected the result: ${s.lastRejection}`
                 : s?.verifierProject
-                  ? 'OutLayer replay runs when the match ends'
-                  : 'Settled before replay verification was enabled',
+                  ? 'Replay verifier configured. No verdict available'
+                  : 'No OutLayer settlement verdict available',
         ],
       ]
     : [];
@@ -523,13 +535,13 @@ export function SettlementPanel({ tournamentId, state }: { tournamentId: string;
         </ul>
       ) : (
         <p>
-          Re-run every check behind this match: roster commitment, seed reveal, VRF proof, hand-by-hand replay, model
-          signatures and the OutLayer settlement replay.
+          Compare recorded hands with the published commitments and inspect the contract’s randomness and settlement
+          status.
         </p>
       )}
-      {v?.onchain?.payouts.length ? (
+      {v?.onchain?.state === 'Finalized' && v.onchain.payouts.length ? (
         <div className="payout-lines">
-          <small>PAID BY THE CONTRACT</small>
+          <small>CREDITED TO ARENA BALANCES</small>
           {v.onchain.payouts.map(p => (
             <div key={p.agent}>
               <span>{p.agent.split('.')[0]}</span>
@@ -538,9 +550,10 @@ export function SettlementPanel({ tournamentId, state }: { tournamentId: string;
           ))}
         </div>
       ) : null}
+      {v && <p>{v.trust}</p>}
       {error && <p className="fund-hint">{error}</p>}
       <button className="quiet-link" disabled={busy} onClick={run}>
-        {busy ? 'CHECKING…' : v ? 'RUN AGAIN' : 'RUN ALL CHECKS'} <ArrowRight size={15} />
+        {busy ? 'CHECKING…' : v ? 'RUN AGAIN' : 'CHECK MATCH EVIDENCE'} <ArrowRight size={15} />
       </button>
     </section>
   );

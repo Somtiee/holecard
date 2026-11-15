@@ -1,7 +1,8 @@
 import { SCHEMA, actions } from 'near-api-js';
 import { deserialize } from 'borsh';
-import { contractId, operatorBalance, parseNear, relayerSend } from './chain';
-import { pool } from '../db';
+import { contractId, operatorBalance, parseNear, prepareOperatorCall, relayerSend } from './chain';
+import { withTx } from '../db';
+import { chainOp } from './journal';
 
 /** NEP-366 meta-transaction relayer. Players sign a DelegateAction; the arena pays the gas.
  * Policy: the sender must be the signed-in account, the receiver must be the arena contract, and only
@@ -76,38 +77,55 @@ export async function relayFastAuthSign(input: {
 }
 
 /** Testnet starter stake so email/Google players can play without ever buying NEAR. Once per owner. */
-export async function sponsorAgent(
-  owner: string,
-  agentAccount: string,
-  deposit: (agent: string, yocto: bigint) => Promise<{ txHash: string }>,
-) {
-  const amount = process.env.SPONSOR_NEAR
-    ? BigInt(Math.round(Number(process.env.SPONSOR_NEAR) * 1e6)) * 10n ** 18n
-    : 0n;
-  if (amount <= 0n || process.env.NEAR_NETWORK === 'mainnet')
+export async function sponsorAgent(owner: string, agentAccount: string) {
+  const configured = process.env.SPONSOR_NEAR;
+  if (!configured || Number(configured) <= 0 || process.env.NEAR_NETWORK === 'mainnet')
     throw new Error('Starter stake is not offered on this arena');
-  // The operator also pays for agent accounts, VRF requests, verified settlements and house-agent entries.
-  // Never let starter stakes eat into that reserve, or matches start failing for everyone.
+  const amount = parseNear(configured);
   const reserve = parseNear(process.env.OPERATOR_RESERVE_NEAR || '3');
-  if ((await operatorBalance()) - amount < reserve)
-    throw new Error('Starter stakes are paused while the arena tops up. Deposit testnet NEAR to this agent instead.');
-  // Implicit-account sign-ins cost nothing to create, so "once per owner" alone does not bound the operator's spend.
-  const today = await pool.query<{ n: string }>(
-    `SELECT count(*)::text AS n FROM sponsorships WHERE created_at>now()-interval '1 day'`,
+  const cap = Number(process.env.SPONSOR_DAILY_CAP || 25);
+  if (!Number.isSafeInteger(cap) || cap <= 0) throw new Error('Starter stakes are disabled');
+
+  const claim = await withTx(async client => {
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['sponsor-budget']);
+    const {
+      rows: [existing],
+    } = await client.query<{ agent: string; amount_yocto: string | null; tx_hash: string | null }>(
+      'SELECT agent,amount_yocto,tx_hash FROM sponsorships WHERE owner=$1',
+      [owner],
+    );
+    if (existing) {
+      if (existing.agent !== agentAccount || !existing.amount_yocto)
+        throw new Error('Starter stake already claimed or awaiting reconciliation');
+      return existing;
+    }
+    const {
+      rows: [budget],
+    } = await client.query<{ n: string; reserved: string }>(
+      `SELECT count(*) FILTER (WHERE created_at>now()-interval '1 day')::text AS n,
+       COALESCE(sum(amount_yocto) FILTER (WHERE tx_hash IS NULL),0)::text AS reserved FROM sponsorships`,
+    );
+    if (Number(budget.n) >= cap) throw new Error('Starter stakes are used up for today');
+    if ((await operatorBalance()) - BigInt(budget.reserved) - amount < reserve)
+      throw new Error('Starter stakes are paused while the arena tops up');
+    await client.query('INSERT INTO sponsorships(owner,agent,amount_yocto) VALUES($1,$2,$3)', [
+      owner,
+      agentAccount,
+      amount.toString(),
+    ]);
+    return { agent: agentAccount, amount_yocto: amount.toString(), tx_hash: null };
+  });
+  if (claim.tx_hash) return { state: 'confirmed', txHash: claim.tx_hash, amountYocto: claim.amount_yocto };
+  const sent = await chainOp(
+    `sponsor:${owner}`,
+    { kind: 'sponsor', signer: 'operator', method: 'deposit' },
+    prepareOperatorCall('deposit', { agent: claim.agent }, BigInt(claim.amount_yocto!)),
   );
-  if (Number(today.rows[0].n) >= Number(process.env.SPONSOR_DAILY_CAP || 25))
-    throw new Error('Starter stakes are used up for today. Deposit NEAR to this agent instead.');
-  const claimed = await pool.query(
-    `INSERT INTO sponsorships(owner,agent) VALUES($1,$2) ON CONFLICT(owner) DO NOTHING RETURNING owner`,
-    [owner, agentAccount],
-  );
-  if (!claimed.rowCount) throw new Error('Starter stake was already claimed by this account');
-  try {
-    const sent = await deposit(agentAccount, amount);
-    await pool.query('UPDATE sponsorships SET tx_hash=$2 WHERE owner=$1', [owner, sent.txHash]);
-    return { txHash: sent.txHash, amountYocto: amount.toString() };
-  } catch (error) {
-    await pool.query('DELETE FROM sponsorships WHERE owner=$1 AND tx_hash IS NULL', [owner]);
-    throw error;
-  }
+  if (sent.state === 'confirmed')
+    await withTx(async client => {
+      // Synchronize releasing the reserved spend with quota checks.
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['sponsor-budget']);
+      await client.query('UPDATE sponsorships SET tx_hash=$2 WHERE owner=$1', [owner, sent.txHash]);
+    });
+  return { state: sent.state, txHash: sent.txHash, amountYocto: claim.amount_yocto };
 }

@@ -40,6 +40,7 @@ export async function migrate() {
       result_hash text, replay_hash text, ranking jsonb, winner_id uuid, payouts jsonb,
       created_at timestamptz NOT NULL DEFAULT now()
     );
+    ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS decision_policy text;
     CREATE TABLE IF NOT EXISTS entries (
       tournament_id uuid NOT NULL REFERENCES tournaments(id),
       agent_id uuid NOT NULL REFERENCES agents(id),
@@ -53,6 +54,10 @@ export async function migrate() {
       tx_hash text, error text,
       created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
     );
+    ALTER TABLE chain_ops ADD COLUMN IF NOT EXISTS signed_tx text;
+    ALTER TABLE chain_ops ADD COLUMN IF NOT EXISTS sender_account text;
+    ALTER TABLE chain_ops ADD COLUMN IF NOT EXISTS tx_nonce numeric(20,0);
+    CREATE INDEX IF NOT EXISTS chain_ops_signer_nonce_idx ON chain_ops(signer,tx_nonce DESC) WHERE tx_nonce IS NOT NULL;
     CREATE TABLE IF NOT EXISTS tee_receipts (
       id bigserial PRIMARY KEY, tournament_id uuid REFERENCES tournaments(id), hand_number integer,
       agent_id uuid REFERENCES agents(id), model text NOT NULL, chat_id text NOT NULL,
@@ -60,6 +65,8 @@ export async function migrate() {
       signature_kind text, signer text, verified boolean NOT NULL DEFAULT false, detail text,
       created_at timestamptz NOT NULL DEFAULT now()
     );
+    ALTER TABLE tee_receipts ADD COLUMN IF NOT EXISTS signature_checked boolean NOT NULL DEFAULT false;
+    ALTER TABLE tee_receipts ADD COLUMN IF NOT EXISTS next_check_at timestamptz NOT NULL DEFAULT now();
     CREATE INDEX IF NOT EXISTS tee_receipts_tournament_idx ON tee_receipts(tournament_id,hand_number);
     ALTER TABLE agents ADD COLUMN IF NOT EXISTS house boolean NOT NULL DEFAULT false;
     CREATE TABLE IF NOT EXISTS decision_notes (
@@ -70,6 +77,7 @@ export async function migrate() {
     CREATE TABLE IF NOT EXISTS sponsorships (
       owner text PRIMARY KEY, agent text NOT NULL, tx_hash text, created_at timestamptz NOT NULL DEFAULT now()
     );
+    ALTER TABLE sponsorships ADD COLUMN IF NOT EXISTS amount_yocto numeric(40,0);
     CREATE INDEX IF NOT EXISTS agents_created_idx ON agents(created_at);
     CREATE INDEX IF NOT EXISTS entries_agent_idx ON entries(agent_id);
     CREATE INDEX IF NOT EXISTS chain_ops_tournament_idx ON chain_ops(tournament_id,created_at);

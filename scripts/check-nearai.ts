@@ -53,8 +53,8 @@ for (const model of allowedModels()) {
       ms: Date.now() - started,
     });
     if (receipts[0]) {
-      let v: { verified: boolean; detail: string; kind?: string | null } = {
-        verified: false,
+      let v: { signatureChecked: boolean; detail: string; kind?: string | null } = {
+        signatureChecked: false,
         detail: 'Signature not available yet',
       };
       for (let i = 0; i < 5; i++) {
@@ -64,10 +64,10 @@ for (const model of allowedModels()) {
           request_hash: receipts[0].requestHash,
           response_hash: receipts[0].responseHash,
         });
-        if (v.verified || !/not available/i.test(v.detail)) break;
+        if (v.signatureChecked || !/not available/i.test(v.detail)) break;
         await sleep(3000);
       }
-      Object.assign(row, { receipt: v.verified ? `TEE VERIFIED (${v.kind})` : v.detail });
+      Object.assign(row, { receipt: v.signatureChecked ? `SIGNATURE MATCHED (${v.kind})` : v.detail });
     }
   } catch (error) {
     row.error = (error as Error).message.slice(0, 200);

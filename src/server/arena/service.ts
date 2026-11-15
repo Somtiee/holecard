@@ -7,18 +7,20 @@ import {
   accessKeys,
   accountBalance,
   accountUrl,
-  agentCall,
+  prepareAgentCall,
   contractId,
   formatNear,
   nearConfigured,
   newAgentKey,
-  operatorCall,
+  prepareOperatorCall,
   parseNear,
+  provider,
   txUrl,
   view,
 } from '../near/chain';
 import { allowedModels, nearAiConfigured, nearAiDecision, verifyReceipt, type TeeReceipt } from '../near/nearai';
 import { pool, withTx } from '../db';
+import { chainOp, reconcileOperation } from '../near/journal';
 import { ensureHouseAgents } from './house';
 import {
   configHash,
@@ -71,66 +73,33 @@ type ChainConfig = {
   agent_seed: string;
   operator_funds_agents?: boolean;
 };
-let configCache: { at: number; value: ChainConfig } | null = null;
-async function chainConfig() {
-  if (!configCache || Date.now() - configCache.at > 60_000)
-    configCache = { at: Date.now(), value: await view<ChainConfig>('get_config') };
-  return configCache.value;
-}
 const VRF_FEE = 50_000_000_000_000_000_000_000n,
   VRF_GAS = 300_000_000_000_000n;
 /** Returns the verified VRF output, null while it is pending, or undefined when no source is configured. */
-async function deckEntropy(t: TournamentRow, chain?: ChainTournament | null): Promise<string | null | undefined> {
-  if (!(await chainConfig()).randomness_source) return undefined;
-  const c = chain || (await chainTournament(t.id));
-  if (!c) return null;
+async function deckEntropy(
+  t: TournamentRow,
+  c: ChainTournament,
+  config: TournamentVerificationConfig,
+): Promise<string | null | undefined> {
   if (c.randomness?.status === 'verified') return c.randomness.output_hex;
-  if (!c.randomness)
+  if (!config.randomness_source) return c.randomness ? null : undefined;
+  if (!c.randomness) {
+    const {
+      rows: [pending],
+    } = await pool.query<{ operation_key: string }>(
+      "SELECT operation_key FROM chain_ops WHERE tournament_id=$1 AND kind='randomness' AND state='pending' ORDER BY created_at LIMIT 1",
+      [t.id],
+    );
     await chainOp(
-      `vrf:${t.id}:${Math.floor(Date.now() / 120_000)}`,
+      pending?.operation_key ?? `vrf:${t.id}:${Math.floor(Date.now() / 120_000)}`,
       { kind: 'randomness', tournamentId: t.id, signer: 'operator', method: 'request_randomness' },
-      () => operatorCall('request_randomness', { tournament_id: t.id }, VRF_FEE, VRF_GAS),
+      prepareOperatorCall('request_randomness', { tournament_id: t.id }, VRF_FEE, VRF_GAS),
     ).catch(error => console.error('VRF request failed', (error as Error).message));
+  }
   return null;
 }
 const chainAgent = (account: string) => view<ChainAgent | null>('get_agent', { agent: account });
 export const chainTournament = (id: string) => view<ChainTournament | null>('get_tournament', { id });
-
-/** Idempotent transaction journal. The contract is the source of truth; callers check chain state first. */
-async function chainOp(
-  key: string,
-  meta: { kind: string; tournamentId?: string; agentId?: string; signer: string; method: string },
-  send: () => Promise<{ txHash: string; value: unknown }>,
-) {
-  const existing = (
-    await pool.query<{ state: string; tx_hash: string | null; updated_at: Date }>(
-      'SELECT state,tx_hash,updated_at FROM chain_ops WHERE operation_key=$1',
-      [key],
-    )
-  ).rows[0];
-  if (existing?.state === 'confirmed') return { state: 'confirmed', txHash: existing.tx_hash, value: null as unknown };
-  if (existing?.state === 'pending' && Date.now() - existing.updated_at.getTime() < 120_000)
-    return { state: 'pending', txHash: null, value: null as unknown };
-  await pool.query(
-    `INSERT INTO chain_ops(operation_key,kind,tournament_id,agent_id,signer,method) VALUES($1,$2,$3,$4,$5,$6)
-    ON CONFLICT(operation_key) DO UPDATE SET state='pending',error=NULL,updated_at=now()`,
-    [key, meta.kind, meta.tournamentId || null, meta.agentId || null, meta.signer, meta.method],
-  );
-  try {
-    const result = await send();
-    await pool.query(`UPDATE chain_ops SET state='confirmed',tx_hash=$2,updated_at=now() WHERE operation_key=$1`, [
-      key,
-      result.txHash,
-    ]);
-    return { state: 'confirmed', txHash: result.txHash, value: result.value };
-  } catch (error) {
-    await pool.query(`UPDATE chain_ops SET state='failed',error=$2,updated_at=now() WHERE operation_key=$1`, [
-      key,
-      (error as Error).message.slice(0, 500),
-    ]);
-    throw error;
-  }
-}
 
 export async function listAgents() {
   const r = await pool.query<AgentRow>('SELECT * FROM agents ORDER BY created_at DESC LIMIT 200');
@@ -141,7 +110,7 @@ export async function getAgent(id: string) {
   return r.rows[0] || null;
 }
 /** List view: only the last hand is needed, so the full history never leaves Postgres, and entries come from one query. */
-const LIST_COLUMNS = `id,creator,name,entry_yocto,starting_stack,capacity,duration_seconds,shares,state,seed_commitment,rules_hash,roster_hash,closes_at,started_at,ended_at,
+const LIST_COLUMNS = `id,creator,name,entry_yocto,starting_stack,capacity,duration_seconds,shares,state,decision_policy,seed_commitment,rules_hash,roster_hash,closes_at,started_at,ended_at,
   hand_number,button,blind_level,stacks,ranking,winner_id,result_hash,replay_hash,payouts,created_at,
   CASE WHEN jsonb_array_length(history)>0 THEN jsonb_build_array(history->-1) ELSE '[]'::jsonb END AS history`;
 export async function listTournaments() {
@@ -198,33 +167,37 @@ export async function createAgent(owner: string, ownerPublicKey: string, input: 
   if (/^HOUSE[ _-]/.test(name)) throw new Error('Names starting with HOUSE are reserved for house agents');
   if (!ownerPublicKey.startsWith('ed25519:'))
     throw new Error('Sign in with an ed25519 NEAR key to own an agent account');
-  const owned = await pool.query<{ n: string }>('SELECT count(*)::text AS n FROM agents WHERE owner=$1', [owner]);
-  if (Number(owned.rows[0].n) >= 5) throw new Error('Each creator can register up to five agents');
-  // Every new agent account is seeded with NEAR from the arena contract, and implicit-account sign-ins are free to mint,
-  // so cap arena-wide creation per hour as well as per owner.
-  const recent = await pool.query<{ n: string }>(
-    `SELECT count(*)::text AS n FROM agents WHERE created_at>now()-interval '1 hour'`,
-  );
-  if (Number(recent.rows[0].n) >= Number(process.env.AGENT_CREATE_HOURLY_CAP || 30))
-    throw new Error('Agent registration is at its hourly limit. Try again later.');
-  const id = randomUUID(),
-    account = `${slugFor(name)}.${contractId()}`;
-  if (account.length > 64) throw new Error('Agent name is too long for a NEAR sub-account');
-  const key = newAgentKey(account);
-  await pool.query(
-    `INSERT INTO agents(id,owner,name,strategy,model,description,near_account,server_public_key,server_key_sealed) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-    [
-      id,
-      owner,
-      name,
-      strategy,
-      fixtureMode() ? model || 'fixture-policy' : model,
-      description,
-      account,
-      key.publicKey,
-      key.sealed,
-    ],
-  );
+  const id = await withTx(async client => {
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['agent-create-quota']);
+    const owned = await client.query<{ n: string }>('SELECT count(*)::text AS n FROM agents WHERE owner=$1', [owner]);
+    if (Number(owned.rows[0].n) >= 5) throw new Error('Each creator can register up to five agents');
+    // Every new agent account is seeded with NEAR from the arena contract, and implicit-account sign-ins are free to mint,
+    // so cap arena-wide creation per hour as well as per owner.
+    const recent = await client.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM agents WHERE created_at>now()-interval '1 hour'`,
+    );
+    if (Number(recent.rows[0].n) >= Number(process.env.AGENT_CREATE_HOURLY_CAP || 30))
+      throw new Error('Agent registration is at its hourly limit. Try again later.');
+    const id = randomUUID(),
+      account = `${slugFor(name)}.${contractId()}`;
+    if (account.length > 64) throw new Error('Agent name is too long for a NEAR sub-account');
+    const key = newAgentKey(account);
+    await client.query(
+      `INSERT INTO agents(id,owner,name,strategy,model,description,near_account,server_public_key,server_key_sealed) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [
+        id,
+        owner,
+        name,
+        strategy,
+        fixtureMode() ? model || 'fixture-policy' : model,
+        description,
+        account,
+        key.publicKey,
+        key.sealed,
+      ],
+    );
+    return id;
+  });
   return provisionAgent(id, owner, ownerPublicKey);
 }
 
@@ -244,17 +217,16 @@ export async function provisionAgent(id: string, owner: string, ownerPublicKey: 
   const result = await chainOp(
     `create-agent:${id}`,
     { kind: 'create_agent', agentId: id, signer: 'operator', method: 'create_agent' },
-    () =>
-      operatorCall(
-        'create_agent',
-        {
-          name: agent.near_account.split('.')[0],
-          owner,
-          owner_public_key: ownerPublicKey,
-          server_public_key: agent.server_public_key,
-        },
-        seed,
-      ),
+    prepareOperatorCall(
+      'create_agent',
+      {
+        name: agent.near_account.split('.')[0],
+        owner,
+        owner_public_key: ownerPublicKey,
+        server_public_key: agent.server_public_key,
+      },
+      seed,
+    ),
   );
   const registered = result.state === 'confirmed' && (await chainAgent(agent.near_account));
   await pool.query(`UPDATE agents SET state=$2,create_tx=COALESCE($3,create_tx) WHERE id=$1`, [
@@ -271,28 +243,29 @@ export async function agentWallet(id: string) {
   const [chain, balance, keys, trophies] = await Promise.all([
     chainAgent(agent.near_account).catch(() => null),
     accountBalance(agent.near_account).catch(() => null),
-    accessKeys(agent.near_account).catch(() => []),
-    view<[string, string][]>('mt_tokens_for_owner', { account_id: agent.near_account }).catch(() => []),
+    accessKeys(agent.near_account).catch(() => null),
+    view<[string, string][]>('mt_tokens_for_owner', { account_id: agent.near_account }).catch(() => null),
   ]);
   return {
     agentId: id,
     nearAccount: agent.near_account,
     explorer: accountUrl(agent.near_account),
     contractId: contractId(),
-    arenaBalanceYocto: chain?.balance ?? '0',
-    arenaBalanceNear: formatNear(chain?.balance ?? '0'),
+    arenaBalanceYocto: chain?.balance ?? null,
+    arenaBalanceNear: chain ? formatNear(chain.balance) : null,
     accountBalanceNear: balance ? formatNear(balance) : null,
     onchainRecord: chain,
-    accessKeys: keys.map(k => ({
-      ...k,
-      role:
-        k.publicKey === agent.server_public_key
-          ? 'arena server (restricted)'
-          : k.permission === 'FullAccess'
-            ? 'owner wallet (full access)'
-            : 'other',
-    })),
-    trophies: trophies.map(([tokenId, balance]) => ({ tokenId, balance })),
+    accessKeys:
+      keys?.map(k => ({
+        ...k,
+        role:
+          k.publicKey === agent.server_public_key
+            ? 'arena server (restricted)'
+            : k.permission === 'FullAccess'
+              ? 'full-access key'
+              : 'other',
+      })) ?? null,
+    trophies: trophies?.map(([tokenId, balance]) => ({ tokenId, balance })) ?? null,
     createTx: agent.create_tx ? txUrl(agent.create_tx) : null,
   };
 }
@@ -392,38 +365,42 @@ export async function launchTournament(owner: string, id: string) {
     shares: t.shares,
   });
   const localRoster = rosterHash(roster);
-  await pool.query(
-    `UPDATE tournaments SET state='launching',rules_hash=$2,roster_hash=$3 WHERE id=$1 AND state='draft'`,
-    [id, rules, localRoster],
+  const claimed = await pool.query(
+    `UPDATE tournaments SET state='launching',rules_hash=$2,roster_hash=$3,decision_policy=$4 WHERE id=$1 AND state='draft'`,
+    [id, rules, localRoster, decisionMode()],
   );
+  if (!claimed.rowCount) throw new Error('Tournament launch already in progress');
   try {
     const result = await chainOp(
       `create-tournament:${id}`,
       { kind: 'create_tournament', tournamentId: id, signer: 'operator', method: 'create_tournament' },
-      () =>
-        operatorCall('create_tournament', {
-          id,
-          rules_hash: rules,
-          seed_commitment: t.seed_commitment,
-          entry_fee: t.entry_yocto,
-          roster,
-          shares: t.shares,
-          registration_ms: REGISTRATION_MS,
-          duration_ms: t.duration_seconds * 1000,
-          grace_ms: GRACE_MS,
-        }),
+      prepareOperatorCall('create_tournament', {
+        id,
+        rules_hash: rules,
+        seed_commitment: t.seed_commitment,
+        entry_fee: t.entry_yocto,
+        roster,
+        shares: t.shares,
+        registration_ms: REGISTRATION_MS,
+        duration_ms: t.duration_seconds * 1000,
+        grace_ms: GRACE_MS,
+      }),
     );
     const chain = await chainTournament(id);
     if (!chain) return { state: result.state, txHash: result.txHash };
     if (chain.roster_hash !== localRoster) throw new Error('Onchain roster commitment differs from the local roster');
-    await pool.query(`UPDATE tournaments SET state='funding',closes_at=$2 WHERE id=$1`, [
+    await pool.query(`UPDATE tournaments SET state='funding',closes_at=$2 WHERE id=$1 AND state='launching'`, [
       id,
       new Date(chain.registration_deadline_ms),
     ]);
     return { state: 'funding', txHash: result.txHash, explorer: result.txHash ? txUrl(result.txHash) : null };
   } catch (error) {
     if (!(await chainTournament(id).catch(() => null)))
-      await pool.query(`UPDATE tournaments SET state='draft' WHERE id=$1 AND state='launching'`, [id]);
+      await pool.query(
+        `UPDATE tournaments SET state='draft' WHERE id=$1 AND state='launching'
+        AND NOT EXISTS (SELECT 1 FROM chain_ops WHERE operation_key='create-tournament:'||$1::text AND state IN ('confirmed','pending'))`,
+        [id],
+      );
     throw error;
   }
 }
@@ -446,7 +423,7 @@ export async function submitEntry(owner: string | null, id: string, agentId: str
   const result = await chainOp(
     `enter:${id}:${agentId}`,
     { kind: 'enter', tournamentId: id, agentId, signer: e.near_account, method: 'enter' },
-    () => agentCall(e.near_account, e.server_key_sealed, 'enter', { tournament_id: id }),
+    prepareAgentCall(e.near_account, e.server_key_sealed, 'enter', { tournament_id: id }),
   );
   if (result.state === 'confirmed')
     await pool.query(`UPDATE entries SET state='entered' WHERE tournament_id=$1 AND agent_id=$2`, [id, agentId]);
@@ -478,7 +455,7 @@ async function syncFunding(t: TournamentRow) {
         await chainOp(
           `house-fund:${t.id}:${e.agent_id}`,
           { kind: 'deposit', tournamentId: t.id, agentId: e.agent_id, signer: 'operator', method: 'deposit' },
-          () => operatorCall('deposit', { agent: e.near_account }, missing),
+          prepareOperatorCall('deposit', { agent: e.near_account }, missing),
         ).catch(error => console.error('House funding failed', e.near_account, (error as Error).message));
         agent = await chainAgent(e.near_account).catch(() => null);
       }
@@ -499,7 +476,7 @@ async function syncFunding(t: TournamentRow) {
   await chainOp(
     `${enough ? 'start' : 'cancel'}:${t.id}`,
     { kind: enough ? 'start' : 'cancel', tournamentId: t.id, signer: 'operator', method: enough ? 'start' : 'cancel' },
-    () => operatorCall(enough ? 'start' : 'cancel', { tournament_id: t.id }),
+    prepareOperatorCall(enough ? 'start' : 'cancel', { tournament_id: t.id }),
   );
   const after = (await chainTournament(t.id))!;
   if (after.state === 'Running') await markRunning(t, after);
@@ -527,6 +504,13 @@ async function markRunning(t: TournamentRow, chain: ChainTournament) {
 }
 
 type SettlementVerifier = { outlayer: string; project_id: string };
+type TournamentVerificationConfig = {
+  pinned: boolean;
+  randomness_source: ChainConfig['randomness_source'];
+  settlement_verifier: SettlementVerifier | null;
+};
+const tournamentVerificationConfig = (id: string) =>
+  view<TournamentVerificationConfig | null>('get_tournament_verification_config', { id });
 export type SettlementStatus = { verified: boolean; in_flight: boolean; last_rejection: string | null };
 let verifierCache: { at: number; value: SettlementVerifier | null } | null = null,
   verifierLoading: Promise<SettlementVerifier | null> | null = null;
@@ -547,6 +531,15 @@ const settlementStatus = (id: string) =>
   view<SettlementStatus>('get_settlement_status', { tournament_id: id }).catch(() => null);
 
 async function finalize(t: TournamentRow) {
+  if (!t.history.length || !t.started_at || Date.now() < t.started_at.getTime() + t.duration_seconds * 1000) return;
+  const chain = await chainTournament(t.id);
+  if (chain?.state !== 'Running') return;
+  const end = chain.started_at_ms + chain.duration_ms;
+  const block = await provider.viewBlock({ finality: 'final' });
+  if (BigInt(block.header.timestamp_nanosec) / 1_000_000n < BigInt(end)) return;
+  const config = await tournamentVerificationConfig(t.id);
+  if (!config) return;
+  const verifier = config.settlement_verifier;
   const ranking =
     t.ranking || rankEntrants(Object.fromEntries(Object.keys(t.stacks).map(id => [id, t.starting_stack])), t.history);
   const entrants = (
@@ -558,7 +551,6 @@ async function finalize(t: TournamentRow) {
   const accounts = new Map(entrants.map(a => [a.id, a.near_account]));
   const ranked = ranking.map(id => accounts.get(id)).filter(Boolean) as string[];
   if (ranked.length < t.shares.length) throw new Error('Ranking has fewer paid entrants than prize places');
-  const verifier = await settlementVerifier();
   const hands = actionLog(t.history);
   const result = t.result_hash || resultCommitment({ tournamentId: t.id, ranking, stacks: t.stacks });
   // With OutLayer settlement the contract itself hashes the action log into replay_hash.
@@ -569,19 +561,19 @@ async function finalize(t: TournamentRow) {
     `UPDATE tournaments SET state='finalizing',ranking=$2::jsonb,winner_id=$3,result_hash=$4,replay_hash=$5,ended_at=COALESCE(ended_at,now()) WHERE id=$1 AND state IN ('running','finalizing')`,
     [t.id, JSON.stringify(ranking), ranking[0], result, replay],
   );
-  const chain = await chainTournament(t.id);
-  if (chain?.state === 'Running' && verifier) {
+  if (verifier) {
     const status = await settlementStatus(t.id);
-    const attempts = Number(
-      (
-        await pool.query<{ n: string }>(`SELECT count(*) AS n FROM chain_ops WHERE operation_key LIKE $1`, [
-          `finalize-verified:${t.id}:%`,
-        ])
-      ).rows[0].n,
-    );
+    const attempts = (
+      await pool.query<{ state: string; operation_key: string }>(
+        `SELECT state,operation_key FROM chain_ops WHERE tournament_id=$1 AND method='finalize_verified' ORDER BY created_at DESC`,
+        [t.id],
+      )
+    ).rows;
+    const pending = attempts.find(op => op.state === 'pending');
+    if (!status) return;
     // Retry only transient OutLayer failures; a replay that disagrees is left for review (or refund after grace).
     const retryable = !status?.last_rejection || status.last_rejection === 'OUTLAYER_NO_RESULT';
-    if (!status?.in_flight && retryable && attempts < 3) {
+    if (!status?.in_flight && retryable && (pending || attempts.length < 3)) {
       const rules = rulesJson({
         id: t.id,
         entryYocto: t.entry_yocto,
@@ -592,47 +584,45 @@ async function finalize(t: TournamentRow) {
       });
       if (sha256Hex(rules) !== t.rules_hash) throw new Error('Rules preimage does not match the onchain rules hash');
       await chainOp(
-        `finalize-verified:${t.id}:${attempts}`,
+        pending?.operation_key ?? `finalize-verified:${t.id}:${attempts.length}`,
         { kind: 'finalize', tournamentId: t.id, signer: 'operator', method: 'finalize_verified' },
-        () =>
-          operatorCall(
-            'finalize_verified',
-            {
-              tournament_id: t.id,
-              result_hash: result,
-              seed_reveal: t.seed_secret,
-              ranking: ranked.slice(0, t.shares.length),
-              rules,
-              configs: entrants.map(a =>
-                configJson({
-                  id: a.id,
-                  owner: a.owner,
-                  nearAccount: a.near_account,
-                  name: a.name,
-                  strategy: a.strategy,
-                  model: a.model,
-                  description: a.description,
-                }),
-              ),
-              hands,
-            },
-            VRF_FEE,
-            VRF_GAS,
-          ),
+        prepareOperatorCall(
+          'finalize_verified',
+          {
+            tournament_id: t.id,
+            result_hash: result,
+            seed_reveal: t.seed_secret,
+            ranking: ranked.slice(0, t.shares.length),
+            rules,
+            configs: entrants.map(a =>
+              configJson({
+                id: a.id,
+                owner: a.owner,
+                nearAccount: a.near_account,
+                name: a.name,
+                strategy: a.strategy,
+                model: a.model,
+                description: a.description,
+              }),
+            ),
+            hands,
+          },
+          VRF_FEE,
+          VRF_GAS,
+        ),
       );
     }
-  } else if (chain?.state !== 'Finalized')
+  } else
     await chainOp(
       `finalize:${t.id}`,
       { kind: 'finalize', tournamentId: t.id, signer: 'operator', method: 'finalize' },
-      () =>
-        operatorCall('finalize', {
-          tournament_id: t.id,
-          result_hash: result,
-          replay_hash: replay,
-          seed_reveal: t.seed_secret,
-          ranking: ranked.slice(0, t.shares.length),
-        }),
+      prepareOperatorCall('finalize', {
+        tournament_id: t.id,
+        result_hash: result,
+        replay_hash: replay,
+        seed_reveal: t.seed_secret,
+        ranking: ranked.slice(0, t.shares.length),
+      }),
     );
   const done = await chainTournament(t.id);
   if (done?.state === 'Finalized')
@@ -644,8 +634,10 @@ async function finalize(t: TournamentRow) {
 
 async function runHand(
   t: TournamentRow,
-  onAction?: (action: HandDecision, tournamentId: string) => void,
-  onTurn?: (turn: PublicTurn, tournamentId: string) => void,
+  chain: ChainTournament,
+  config: TournamentVerificationConfig,
+  onAction?: (action: HandDecision, tournamentId: string, handNumber: number) => void,
+  onTurn?: (turn: PublicTurn, tournamentId: string, handNumber: number) => void,
 ) {
   const client = await pool.connect();
   try {
@@ -655,7 +647,7 @@ async function runHand(
     if (!lock.rows[0]?.locked) return;
     try {
       const latest = (await client.query<TournamentRow>('SELECT * FROM tournaments WHERE id=$1', [t.id])).rows[0];
-      if (latest.state !== 'running') return;
+      if (!latest || latest.state !== 'running') return;
       const seats = (
         await client.query<EntryRow>(
           `SELECT e.*,a.name,a.strategy,a.model,a.description FROM entries e JOIN agents a ON a.id=e.agent_id WHERE e.tournament_id=$1 AND e.state='entered' ORDER BY e.agent_id`,
@@ -671,12 +663,14 @@ async function runHand(
           model: e.model,
           description: e.description,
         }));
-      const entropy = await deckEntropy(latest);
-      if (entropy === null) return; // wait for OutLayer to deliver verified randomness before dealing
-      if (seats.length < 2 || Date.now() >= latest.started_at!.getTime() + latest.duration_seconds * 1000) {
-        await finalize(latest);
+      if (Date.now() >= latest.started_at!.getTime() + latest.duration_seconds * 1000) {
+        // With no completed hands, leave the match for the contract's expiry/refund path.
+        if (latest.history.length) await finalize(latest);
         return;
       }
+      if (seats.length < 2) return;
+      const entropy = await deckEntropy(latest, chain, config);
+      if (entropy === null || Date.now() >= latest.started_at!.getTime() + latest.duration_seconds * 1000) return;
       const receipts: TeeReceipt[] = [];
       // Each model explains its move, but the note can mention hole cards, so it is stored apart from the public
       // hand record and released only after settlement. The call counter ties a note to its own decision even if
@@ -684,14 +678,16 @@ async function runHand(
       const notes: { seq: number; agentId: string; note: string }[] = [];
       let calls = 0,
         pending: { call: number; agentId: string; note?: string } | null = null;
-      const provider = fixtureMode()
-        ? fixtureDecision
-        : async (ctx: DecisionContext) => {
-            const call = ++calls;
-            const decision = await nearAiDecision(ctx, r => receipts.push(r));
-            pending = { call, agentId: ctx.agentId, note: decision.reason };
-            return decision;
-          };
+      const policy = latest.decision_policy ?? decisionMode();
+      const provider =
+        policy === 'fixture'
+          ? fixtureDecision
+          : async (ctx: DecisionContext) => {
+              const call = ++calls;
+              const decision = await nearAiDecision(ctx, r => receipts.push(r));
+              pending = { call, agentId: ctx.agentId, note: decision.reason };
+              return decision;
+            };
       let seq = 0;
       const handNumber = latest.hand_number + 1;
       const hand = await playHand({
@@ -703,33 +699,44 @@ async function runHand(
         bigBlind: Math.min(20000, 20 * latest.blind_level),
         timeoutMs: Math.min(30000, Math.max(1000, Number(process.env.AGENT_TIMEOUT_MS || 8000) || 8000)),
         provider,
-        onTurn: turn => onTurn?.(turn, latest.id),
+        onTurn: turn => onTurn?.(turn, latest.id, handNumber),
         onDecision: d => {
           const p = pending as { call: number; agentId: string; note?: string } | null;
           if (p && p.call === calls && p.agentId === d.agentId && p.note && !d.reason.startsWith('Fallback'))
             notes.push({ seq, agentId: d.agentId, note: p.note });
           pending = null;
           seq++;
-          onAction?.(d, latest.id);
+          onAction?.(d, latest.id, handNumber);
         },
       });
       const stacks = { ...latest.stacks };
       for (const p of hand.players) stacks[p.id] = p.stack;
-      await client.query(
-        `UPDATE tournaments SET history=history||$2::jsonb,stacks=$3::jsonb,hand_number=hand_number+1,button=button+1,
+      await client.query('BEGIN');
+      try {
+        const saved = await client.query(
+          `UPDATE tournaments SET history=history||$2::jsonb,stacks=$3::jsonb,hand_number=hand_number+1,button=button+1,
         blind_level=CASE WHEN (hand_number+1)%10=0 THEN blind_level+1 ELSE blind_level END WHERE id=$1 AND hand_number=$4 AND state='running'`,
-        [latest.id, JSON.stringify([hand]), JSON.stringify(stacks), latest.hand_number],
-      );
-      for (const n of notes)
-        await client.query(
-          `INSERT INTO decision_notes(tournament_id,hand_number,seq,agent_id,note) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`,
-          [latest.id, handNumber, n.seq, n.agentId, n.note],
+          [latest.id, JSON.stringify([hand]), JSON.stringify(stacks), latest.hand_number],
         );
-      for (const r of receipts)
-        await client.query(
-          `INSERT INTO tee_receipts(tournament_id,hand_number,agent_id,model,chat_id,request_hash,response_hash) VALUES($1,$2,$3,$4,$5,$6,$7)`,
-          [latest.id, handNumber, r.agentId, r.model, r.chatId, r.requestHash, r.responseHash],
-        );
+        if (!saved.rowCount) {
+          await client.query('ROLLBACK');
+          return;
+        }
+        for (const n of notes)
+          await client.query(
+            `INSERT INTO decision_notes(tournament_id,hand_number,seq,agent_id,note) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`,
+            [latest.id, handNumber, n.seq, n.agentId, n.note],
+          );
+        for (const r of receipts)
+          await client.query(
+            `INSERT INTO tee_receipts(tournament_id,hand_number,agent_id,model,chat_id,request_hash,response_hash) VALUES($1,$2,$3,$4,$5,$6,$7)`,
+            [latest.id, handNumber, r.agentId, r.model, r.chatId, r.requestHash, r.responseHash],
+          );
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      }
     } finally {
       await client.query('SELECT pg_advisory_unlock(hashtext($1))', [`hand:${t.id}`]);
     }
@@ -739,25 +746,24 @@ async function runHand(
 }
 
 /** Checks a few pending TEE signatures per tick (signatures can lag the completion slightly). */
-async function verifyPendingReceipts() {
+export async function verifyPendingReceipts() {
   if (!nearAiConfigured()) return;
   const rows = (
     await pool.query<{ id: string; model: string; chat_id: string; request_hash: string; response_hash: string }>(
-      `SELECT id,model,chat_id,request_hash,response_hash FROM tee_receipts WHERE NOT verified AND (detail IS NULL OR detail='Signature not available yet') AND created_at>now()-interval '1 hour' ORDER BY id LIMIT 5`,
+      `SELECT id,model,chat_id,request_hash,response_hash FROM tee_receipts WHERE NOT signature_checked AND next_check_at<=now() AND
+        (detail IS NULL OR detail='Signature not available yet' OR detail LIKE 'Check failed:%')
+        AND created_at>now()-interval '1 hour' ORDER BY id LIMIT 5`,
     )
   ).rows;
   for (const r of rows) {
     try {
       const v = await verifyReceipt(r);
-      await pool.query('UPDATE tee_receipts SET verified=$2,signature_kind=$3,signer=$4,detail=$5 WHERE id=$1', [
-        r.id,
-        v.verified,
-        v.kind,
-        v.signer,
-        v.detail,
-      ]);
+      await pool.query(
+        `UPDATE tee_receipts SET verified=false,signature_checked=$2,signature_kind=$3,signer=$4,detail=$5,next_check_at=now()+interval '1 minute' WHERE id=$1`,
+        [r.id, v.signatureChecked, v.kind, v.signer, v.detail],
+      );
     } catch (error) {
-      await pool.query('UPDATE tee_receipts SET detail=$2 WHERE id=$1', [
+      await pool.query(`UPDATE tee_receipts SET detail=$2,next_check_at=now()+interval '1 minute' WHERE id=$1`, [
         r.id,
         `Check failed: ${(error as Error).message}`.slice(0, 300),
       ]);
@@ -765,63 +771,97 @@ async function verifyPendingReceipts() {
   }
 }
 
+const tableJobs = new Set<string>();
+let lastScheduled: string | undefined;
+let houseJob: Promise<void> | undefined;
+
 export async function tickArena(
-  onAction?: (action: HandDecision, tournamentId: string) => void,
-  onTurn?: (turn: PublicTurn, tournamentId: string) => void,
+  onAction?: (action: HandDecision, tournamentId: string, handNumber: number) => void,
+  onTurn?: (turn: PublicTurn, tournamentId: string, handNumber: number) => void,
 ) {
   if (!nearConfigured()) return;
-  await ensureHouseAgents(provisionAgent).catch(error => console.error('House agents', (error as Error).message));
+  houseJob ??= ensureHouseAgents(provisionAgent)
+    .catch(error => console.error('House agents', (error as Error).message))
+    .then(() => {})
+    .finally(() => {
+      houseJob = undefined;
+    });
   const rows = (
     await pool.query<TournamentRow>(
       `SELECT * FROM tournaments WHERE state IN ('launching','funding','running','finalizing') ORDER BY created_at`,
     )
   ).rows;
-  for (const t of rows)
-    try {
-      if (t.state === 'launching') {
-        const c = await chainTournament(t.id);
-        if (c)
-          await pool.query(`UPDATE tournaments SET state='funding',closes_at=$2 WHERE id=$1`, [
-            t.id,
-            new Date(c.registration_deadline_ms),
-          ]);
-        else
-          await pool.query(
-            `UPDATE tournaments SET state='draft' WHERE id=$1 AND state='launching' AND created_at<now()-interval '5 minutes'`,
-            [t.id],
-          );
-        continue;
-      }
-      if (t.state === 'funding') {
-        await syncFunding(t);
-        continue;
-      }
-      const chain = await chainTournament(t.id);
-      if (chain?.state === 'Cancelled') {
-        await pool.query(`UPDATE tournaments SET state='cancelled',ended_at=now() WHERE id=$1`, [t.id]);
-        continue;
-      }
-      if (chain?.state === 'Finalized') {
-        await pool.query(`UPDATE tournaments SET state='settled',payouts=$2::jsonb WHERE id=$1`, [
+  const cursor = rows.findIndex(t => t.id === lastScheduled) + 1;
+  for (const t of [...rows.slice(cursor), ...rows.slice(0, cursor)]) {
+    if (tableJobs.size >= 4) break;
+    if (tableJobs.has(t.id)) continue;
+    tableJobs.add(t.id);
+    lastScheduled = t.id;
+    void advanceTable(t, onAction, onTurn).finally(() => tableJobs.delete(t.id));
+  }
+}
+
+async function advanceTable(
+  t: TournamentRow,
+  onAction?: (action: HandDecision, tournamentId: string, handNumber: number) => void,
+  onTurn?: (turn: PublicTurn, tournamentId: string, handNumber: number) => void,
+) {
+  try {
+    if (t.state === 'launching') {
+      const c = await chainTournament(t.id);
+      if (c)
+        await pool.query(`UPDATE tournaments SET state='funding',closes_at=$2 WHERE id=$1 AND state='launching'`, [
           t.id,
-          JSON.stringify(chain.payouts),
+          new Date(c.registration_deadline_ms),
         ]);
-        continue;
-      }
-      if (chain && Date.now() > chain.started_at_ms + chain.duration_ms + chain.grace_ms) {
-        await chainOp(
-          `cancel-expired:${t.id}`,
-          { kind: 'cancel', tournamentId: t.id, signer: 'operator', method: 'cancel' },
-          () => operatorCall('cancel', { tournament_id: t.id }),
+      else {
+        const progress = await reconcileOperation(`create-tournament:${t.id}`).catch(() => null);
+        if (progress?.state === 'pending') return;
+        await pool.query(
+          `UPDATE tournaments SET state='draft' WHERE id=$1 AND state='launching' AND created_at<now()-interval '5 minutes'
+             AND NOT EXISTS (SELECT 1 FROM chain_ops WHERE operation_key='create-tournament:'||$1::text AND state='pending')`,
+          [t.id],
         );
-        continue;
       }
-      if (t.state === 'running') await runHand(t, onAction, onTurn);
-      else if (t.state === 'finalizing') await finalize(t);
-    } catch (error) {
-      console.error('Arena transition failed', t.id, (error as Error).message);
+      return;
     }
-  await verifyPendingReceipts().catch(error => console.error('TEE receipt check failed', (error as Error).message));
+    if (t.state === 'funding') {
+      await syncFunding(t);
+      return;
+    }
+    const chain = await chainTournament(t.id);
+    if (chain?.state === 'Cancelled') {
+      await pool.query(`UPDATE tournaments SET state='cancelled',ended_at=now() WHERE id=$1`, [t.id]);
+      return;
+    }
+    if (chain?.state === 'Finalized') {
+      await pool.query(`UPDATE tournaments SET state='settled',payouts=$2::jsonb WHERE id=$1`, [
+        t.id,
+        JSON.stringify(chain.payouts),
+      ]);
+      return;
+    }
+    if (chain?.state !== 'Running') return;
+    const config = await tournamentVerificationConfig(t.id);
+    if (!config) return;
+    const end = chain.started_at_ms + chain.duration_ms;
+    const noEntropy = config.pinned && config.randomness_source && chain.randomness?.status !== 'verified';
+    const refundAfter = noEntropy ? end : end + chain.grace_ms + 1;
+    if (Date.now() >= refundAfter) {
+      const block = await provider.viewBlock({ finality: 'final' });
+      if (BigInt(block.header.timestamp_nanosec) / 1_000_000n < BigInt(refundAfter)) return;
+      await chainOp(
+        `cancel-expired:${t.id}`,
+        { kind: 'cancel', tournamentId: t.id, signer: 'operator', method: 'cancel' },
+        prepareOperatorCall('cancel', { tournament_id: t.id }),
+      );
+      return;
+    }
+    if (t.state === 'running') await runHand(t, chain, config, onAction, onTurn);
+    else if (t.state === 'finalizing') await finalize(t);
+  } catch (error) {
+    console.error('Arena transition failed', t.id, (error as Error).message);
+  }
 }
 
 export async function operationHistory(tournamentId: string) {
@@ -866,7 +906,7 @@ export async function decisionNotes(tournamentId: string) {
 
 export async function teeReceipts(tournamentId: string) {
   const r = await pool.query(
-    `SELECT r.hand_number,r.agent_id,a.name AS agent,r.model,r.chat_id,r.request_hash,r.response_hash,r.signature_kind,r.signer,r.verified,r.detail,r.created_at
+    `SELECT r.hand_number,r.agent_id,a.name AS agent,r.model,r.chat_id,r.request_hash,r.response_hash,r.signature_kind,r.signer,false AS verified,r.signature_checked,r.detail,r.created_at
     FROM tee_receipts r LEFT JOIN agents a ON a.id=r.agent_id WHERE r.tournament_id=$1 ORDER BY r.id DESC LIMIT 200`,
     [tournamentId],
   );
@@ -892,29 +932,33 @@ export async function verifyMatch(tournamentId: string) {
   const chain = await chainTournament(t.id).catch(() => null);
   const vrf = chain?.randomness?.status === 'verified' ? chain.randomness.output_hex : undefined;
   const handChecks = await Promise.all(
-    t.history.map(async h => ({
+    (t.state === 'settled' ? t.history : []).map(async h => ({
       handNumber: h.handNumber,
       valid: await replayMatches(h, {
         smallBlind: Math.min(10000, 10 * (Math.floor((h.handNumber - 1) / 10) + 1)),
         bigBlind: Math.min(20000, 20 * (Math.floor((h.handNumber - 1) / 10) + 1)),
       }),
-      seedMatches: handSeed(t.seed_secret, t.id, h.handNumber, vrf) === h.seed,
+      seedMatches: chain ? handSeed(t.seed_secret, t.id, h.handNumber, vrf) === h.seed : null,
     })),
   );
   const settled = t.state === 'settled';
   const receipts = (
-    await pool.query<{ total: string; verified: string }>(
-      `SELECT count(*)::text AS total,count(*) FILTER (WHERE verified)::text AS verified FROM tee_receipts WHERE tournament_id=$1`,
+    await pool.query<{ total: string; signature_checked: string }>(
+      `SELECT count(*)::text AS total,count(*) FILTER (WHERE signature_checked)::text AS signature_checked FROM tee_receipts WHERE tournament_id=$1`,
       [t.id],
     )
   ).rows[0];
-  const roster = data.entries.length
-    ? rosterHash(data.entries.map(e => ({ agent: e.near_account, config_hash: e.config_hash })))
-    : null;
-  const [verifier, settlement] = await Promise.all([settlementVerifier(), settlementStatus(t.id)]);
+  const roster =
+    chain && data.entries.length >= 2
+      ? rosterHash(data.entries.map(e => ({ agent: e.near_account, config_hash: e.config_hash })))
+      : null;
+  const [config, settlement] = await Promise.all([
+    tournamentVerificationConfig(t.id).catch(() => null),
+    settlementStatus(t.id),
+  ]);
   return {
     tournamentId: t.id,
-    contractId: contractId(),
+    contractId: nearConfigured() ? contractId() : null,
     handChecks,
     engineReplayVerified: handChecks.length > 0 && handChecks.every(h => h.valid && h.seedMatches),
     seedCommitment: t.seed_commitment,
@@ -926,25 +970,37 @@ export async function verifyMatch(tournamentId: string) {
           rosterHashMatches: chain.roster_hash === roster,
           seedCommitmentMatches: chain.seed_commitment === t.seed_commitment,
           randomness: chain.randomness,
-          resultHashMatches: settled ? chain.result_hash === t.result_hash : null,
-          replayHashMatches: settled ? chain.replay_hash === t.replay_hash : null,
+          resultHashMatches:
+            settled && t.ranking && chain.result_hash
+              ? chain.result_hash === resultCommitment({ tournamentId: t.id, ranking: t.ranking, stacks: t.stacks })
+              : null,
+          replayHashMatches:
+            settled && settlement && chain.replay_hash
+              ? chain.replay_hash ===
+                (settlement?.verified
+                  ? sha256Hex(actionLog(t.history).join('\n'))
+                  : resultCommitment({ tournamentId: t.id, history: t.history }))
+              : null,
           revealedSeedMatches: settled ? chain.revealed_seed === t.seed_secret : null,
           payouts: chain.payouts,
         }
       : null,
     resultHash: t.result_hash,
     replayHash: t.replay_hash,
-    decisionPolicy: decisionMode(),
-    teeReceipts: { total: Number(receipts.total), verified: Number(receipts.verified) },
+    decisionPolicy: t.decision_policy,
+    teeReceipts: { total: Number(receipts.total), signatureChecked: Number(receipts.signature_checked) },
     settlement: {
-      verifierProject: verifier?.project_id ?? null,
-      verifiedByOutLayer: Boolean(settlement?.verified),
+      verifierProject: config?.settlement_verifier?.project_id ?? null,
+      verifiedByOutLayer: Boolean(chain?.state === 'Finalized' && settlement?.verified),
       inFlight: Boolean(settlement?.in_flight),
       lastRejection: settlement?.last_rejection ?? null,
     },
-    trust: settlement?.verified
-      ? 'Deck seeds mix the operator seed (committed onchain before entry) with the OutLayer VRF output. Before paying, the contract had an OutLayer TEE replay every hand from that seed and the recorded actions; the payout ranking is the replayed one. Each model decision carries a NEAR AI Cloud TEE signature.'
-      : 'Deck seeds mix the operator seed (committed onchain before entry) with the OutLayer VRF output when configured. This match settled on the operator-asserted ranking; the NEAR contract enforced entrants, frozen shares, the seed reveal and exact payouts.',
+    trust:
+      settlement?.verified && chain?.state === 'Finalized'
+        ? 'The contract accepted the OutLayer replay result before crediting prizes.'
+        : chain?.state === 'Finalized'
+          ? 'The contract finalized this tournament. OutLayer replay verification is unconfirmed.'
+          : 'A finalized result is not currently confirmed by the contract.',
   };
 }
 

@@ -545,6 +545,9 @@ pub fn replay(input: &Input) -> Result<Output, String> {
     if stacks.len() < 2 || input.places == 0 || input.places > stacks.len() {
         return Err("INVALID_FIELD".into());
     }
+    if input.hands.is_empty() {
+        return Err("EMPTY_REPLAY".into());
+    }
     let total: i64 = stacks.values().sum();
     let mut busted: HashMap<String, (usize, i64)> = HashMap::new();
     for (k, line) in input.hands.iter().enumerate() {
