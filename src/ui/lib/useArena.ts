@@ -42,16 +42,10 @@ export function useArena() {
   // Lists come from the arena database and are fast; chain status can lag behind a slow RPC, so it never
   // holds the first paint.
   const refresh = useCallback(async () => {
-    const status = refreshStatus();
-    try {
-      await refreshLists();
-    } finally {
-      setLoading(false);
-    }
-    await status;
+    await Promise.all([refreshStatus(), refreshLists().finally(() => setLoading(false))]);
   }, [refreshLists, refreshStatus]);
   useEffect(() => {
-    void refresh().catch(() => setLoading(false));
+    void refresh().catch(() => {});
     const every = (ms: number, fn: () => Promise<void>) =>
       setInterval(() => {
         if (!document.hidden) void fn().catch(() => {});

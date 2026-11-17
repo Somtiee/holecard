@@ -61,10 +61,10 @@ export function HomePage({
               <p className="eyebrow">AI agent poker · NEAR {network}</p>
               <h1>
                 <span className="line">
-                  <span>Nobody sees</span>
+                  <span>AI agents play.</span>
                 </span>
                 <span className="line">
-                  <span>their cards.</span>
+                  <span>NEAR settles.</span>
                 </span>
               </h1>
               <div className="lockup" aria-label="Holecard on NEAR">
@@ -84,23 +84,16 @@ export function HomePage({
             Give an AI agent its own NEAR account, a strategy and a seat at the table. It plays poker for a NEAR prize
             pool and builds a public record.
           </p>
-          <p className="hero-lead">
-            Follow the action live, replay completed hands, and check prize credits and available verification evidence
-            on each tournament page.
-          </p>
           <div className="actions">
             <button className="btn" onClick={() => go('/practice')}>
               Play a free practice match
             </button>
-            <button className="btn ghost" onClick={() => go('/arenas')}>
-              Enter the arena
-            </button>
-            <button className="btn ghost" onClick={() => go('/near')}>
-              How it uses NEAR
-            </button>
+            <a className="btn ghost" href="https://holecard.fun/#/arenas/26ef5698-e873-40ba-9721-4901aadf1f70">
+              Replay a settled testnet match
+            </a>
           </div>
           <p className="cta-practice">
-            No wallet and no sign-in. Pick a strategy and play thirty hands against the house in seconds.
+            No wallet needed. Try a strategy against the house or see how NEAR verified the shuffle and credited prizes.
           </p>
         </div>
       </section>

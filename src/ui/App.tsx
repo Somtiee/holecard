@@ -117,7 +117,7 @@ export default function App() {
     ) : path === '/arenas' ? (
       <ArenasPage arena={arena} onCreate={openTournament} />
     ) : path.startsWith('/arenas/') ? (
-      <TournamentPage arena={arena} id={path.split('/')[2]} notify={setToast} />
+      <TournamentPage key={path} arena={arena} id={path.split('/')[2]} notify={setToast} />
     ) : path === '/agents' ? (
       <AgentsPage arena={arena} onCreate={openAgent} />
     ) : path.startsWith('/agents/') ? (
@@ -194,7 +194,7 @@ export default function App() {
           </div>
         </div>
       )}
-      {arena.loading ? (
+      {arena.loading && path !== '/practice' && !path.startsWith('/arenas/') ? (
         <div className="loading-scene">
           <span />
           <b>Holecard</b>

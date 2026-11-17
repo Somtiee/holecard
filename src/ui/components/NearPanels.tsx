@@ -515,7 +515,7 @@ export function SettlementPanel({ tournamentId, state }: { tournamentId: string;
       ]
     : [];
   return (
-    <section className="content-panel verify-panel">
+    <section className="content-panel verify-panel" id="proof-of-result" tabIndex={-1} aria-label="Proof of result">
       <div className="panel-heading">
         <span>PROOF OF RESULT</span>
         <ShieldCheck size={17} />

@@ -1575,6 +1575,12 @@ code {
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
 }
+.tournament-actions {
+  margin-bottom: 20px;
+}
+.verify-panel {
+  scroll-margin-top: 90px;
+}
 .match-strip i {
   font: 400 13px var(--mono);
   font-style: normal;

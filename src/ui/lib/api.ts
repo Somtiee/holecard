@@ -143,6 +143,15 @@ export type Health = {
   contract: Record<string, unknown> | null;
 };
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...options,
@@ -150,7 +159,7 @@ export async function api<T>(path: string, options?: RequestInit): Promise<T> {
     credentials: 'same-origin',
   });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+  if (!response.ok) throw new ApiError(data.error || `HTTP ${response.status}`, response.status);
   return data as T;
 }
 

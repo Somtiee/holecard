@@ -17,6 +17,7 @@ import { ActionTicker, PokerTable } from '../components/PokerTable';
 import { CardFace, Empty, Tag } from '../components/common';
 import {
   api,
+  ApiError,
   go,
   short,
   timeLeft,
@@ -25,6 +26,7 @@ import {
   type Decision,
   type Hand,
   type Operation,
+  type Tournament,
 } from '../lib/api';
 import { useArena } from '../lib/useArena';
 
@@ -37,7 +39,28 @@ export function TournamentPage({
   id: string;
   notify: (x: string) => void;
 }) {
-  const t = arena.tournaments.find(t => t.id === id);
+  const listed = arena.tournaments.find(t => t.id === id);
+  const [archived, setArchived] = useState<Tournament | null>(null);
+  const [loadError, setLoadError] = useState('');
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const listedNow = Boolean(listed);
+  const t = listed ?? archived;
+  useEffect(() => {
+    if (listedNow) return;
+    const controller = new AbortController();
+    setLoadError('');
+    void api<Tournament>(`/api/tournaments/${encodeURIComponent(id)}`, { signal: controller.signal })
+      .then(setArchived)
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setLoadError(
+          error instanceof ApiError && error.status === 404
+            ? 'Tournament not found.'
+            : 'Could not load this tournament. Please try again.',
+        );
+      });
+    return () => controller.abort();
+  }, [id, listedNow, loadAttempt]);
   const [operations, setOperations] = useState<Operation[]>([]),
     [selected, setSelected] = useState(''),
     [hand, setHand] = useState<Hand | null>(null),
@@ -76,7 +99,11 @@ export function TournamentPage({
   if (!t)
     return (
       <main className="page">
-        <Empty text="Tournament not found." />
+        {loadError ? (
+          <Empty text={loadError} action="Try again" onClick={() => setLoadAttempt(attempt => attempt + 1)} />
+        ) : (
+          <p role="status">Loading tournament…</p>
+        )}
       </main>
     );
   const myAgents = arena.agents.filter(
@@ -142,6 +169,20 @@ export function TournamentPage({
           <b>{t.state === 'funding' ? timeLeft(t.closesAt) : `${Math.round(t.durationSeconds / 60)} MIN`}</b>
         </span>
       </div>
+      {t.state === 'settled' && (
+        <div className="actions tournament-actions">
+          <button
+            className="btn ghost"
+            onClick={() => {
+              const proof = document.getElementById('proof-of-result');
+              proof?.focus({ preventScroll: true });
+              proof?.scrollIntoView({ block: 'start' });
+            }}
+          >
+            <ShieldCheck size={16} /> See proof of result
+          </button>
+        </div>
+      )}
       {tournamentClockExpired(t) && !t.handNumber && !event && (
         <p className="fund-hint">
           The time limit passed without a completed hand. Entry fees remain in escrow until the contract confirms
